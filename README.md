@@ -1,5 +1,7 @@
 # idd-skills
 
+An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
+
 ## `idd-implement` Skill Documentation
 
 An autonomous, non-interactive skill that starts from a GitHub Issue number and executes the full workflow end-to-end: **reviewing requirements and open questions → posting a specification/technical requirements comment (or exiting after posting a clarification comment) → implementing and verifying in a `git worktree` → creating a Pull Request → returning to the original branch**.
@@ -27,6 +29,28 @@ Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implemen
 - **GitHub CLI (`gh`)**
   - Must be authenticated via `gh auth login` if not using a GitHub App
 - **Git** (with `git worktree` support)
+
+---
+
+## Installation
+
+By cloning this repository into the `~/.gemini/config/plugins` directory, it is automatically recognized and enabled as a global **Antigravity** plugin.
+
+```bash
+# Create the plugins directory if it does not exist
+mkdir -p ~/.gemini/config/plugins
+
+# Navigate to the directory and clone the repository
+cd ~/.gemini/config/plugins
+git clone https://github.com/sawarame/idd-skills.git
+```
+
+If you prefer to clone via SSH, run the following commands:
+
+```bash
+cd ~/.gemini/config/plugins
+git clone git@github.com:sawarame/idd-skills.git
+```
 
 ---
 
