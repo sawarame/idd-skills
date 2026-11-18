@@ -1,0 +1,17 @@
+{
+  "name": "idd-skills",
+  "displayName": "IDD Skills",
+  "version": "1.0.0",
+  "description": "Issue-driven development (IDD) skills that inspect GitHub Issues, post specifications or clarification comments, implement and verify changes in isolated git worktrees, and open pull requests.",
+  "author": {
+    "name": "sawarame",
+    "url": "https://github.com/sawarame"
+  },
+  "repository": "https://github.com/sawarame/idd-skills",
+  "suggestedPrompts": [
+    "Implement GitHub Issue #123 using idd-implement",
+    "Check GitHub Issue #123 for ambiguities and post clarification questions if needed",
+    "Review requirements for Issue #123, implement in a git worktree, and create a PR"
+  ],
+  "enabled": true
+}
