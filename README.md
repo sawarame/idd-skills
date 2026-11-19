@@ -1,5 +1,7 @@
 # idd-skills
 
+[English](./README.md) | [日本語](./README.ja.md)
+
 An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
 
 ## `idd-implement` Skill Documentation
@@ -30,6 +32,23 @@ Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implemen
   - Must be authenticated via `gh auth login` if not using a GitHub App
   - If you use **GitHub Projects (Projects v2)** on a **personal (`User`)** repository, ensure your local `gh` CLI includes the `project` scope (`gh auth refresh -s project`), even when using a GitHub App Bot for comments and PRs.
 - **Git** (with `git worktree` support)
+- **GitHub Projects (Projects v2)** *(Required if you want automatic status transitions)*
+  - Legacy Projects (classic) are not supported; use **Projects v2**.
+  - If the repository/Issue does not use open Projects v2, the skill automatically skips Project status updates and continues the workflow.
+
+---
+
+## GitHub Projects (Projects v2) & Label Configuration
+
+To enable automatic status tracking during `idd-implement`, set up an open **GitHub Projects (Projects v2)** board linked to your repository (or add your target Issues to an open Project v2) with a single-select **`Status`** field containing the following options:
+
+| Status Option | Required | Timing of Update | Behavior When Missing |
+| :--- | :---: | :--- | :--- |
+| **`In Progress`** | Recommended | Immediately before implementation begins (after posting the spec comment, before creating the `git worktree` and editing code) | Outputs a warning and continues implementation |
+| **`In Review`** | Optional | Immediately after the Pull Request is created | Skips cleanly without warning |
+
+- Other standard statuses (such as `Todo` / `Backlog` before starting, or `Done` via GitHub's built-in workflow when the PR is merged and closes the Issue) can be configured freely as usual.
+- **`question` Label**: When clarification is needed (Goal A), the skill automatically adds the `question` label to the Issue (creating it if it does not exist yet). Once clarifications are resolved and implementation starts (Goal B), the `question` label is automatically removed.
 
 ---
 
@@ -163,7 +182,7 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 - **Comments or PRs are still posted under your personal account**
   - Check that `~/.config/github-app/.env` has the exact path and filename.
   - Check whether the agent called `gh` directly or used GitHub MCP tools instead of `gh-as-bot.mjs` ([SKILL.md](./skills/idd-implement/SKILL.md) specifies prioritizing `gh-as-bot.mjs`).
-- **GitHub Project `Status` is not updated to `In Progress`**
+- **GitHub Project `Status` is not updated to `In Progress` or `In Review`**
   - **Personal (`User`) repository**: GitHub App Installation Tokens cannot access user-owned Projects v2, so `update-project-status.mjs` uses your local `gh` CLI. Run `gh auth refresh -s project` if the `project` scope is missing.
   - **Organization repository**: Ensure the GitHub App has **Organization permissions → Projects: `Read and write`** enabled and approved (**Accept new permissions**) on the Organization installation.
-  - **Non-blocking warnings**: If the repository does not use Projects v2, the Issue is not registered in an open Project, or the Project's `Status` field has no `In Progress` option, `update-project-status.mjs` outputs a notice/warning and exits `0` so implementation continues.
+  - **Non-blocking behavior**: If the repository does not use Projects v2, the Issue is not registered in an open Project, or `In Progress` is missing from `Status`, `update-project-status.mjs` outputs a notice/warning and exits `0` so implementation continues. If `In Review` does not exist in `Status`, the post-PR update is skipped cleanly without warning.
