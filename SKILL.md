@@ -1,14 +1,14 @@
 ---
 name: idd-implement
-description: Autonomously inspects a GitHub Issue by number, posts a clarification comment and exits if anything is ambiguous, or—if requirements are clear—posts specifications and technical requirements as an Issue comment, implements and verifies changes (tests/build) in an isolated git worktree, opens a PR, and restores the original branch.
+description: Autonomously inspects a GitHub Issue by number, posts a clarification comment with a `question` label and exits if anything is ambiguous, or—if requirements are clear—posts specifications and technical requirements as an Issue comment, removes the `question` label if present, sets the GitHub Project Status to `In Progress` when applicable, implements and verifies changes (tests/build) in an isolated git worktree, opens a PR, and restores the original branch.
 ---
 
 # Issue-Driven Implementation Skill (`idd-implement`)
 
 Starting from a GitHub Issue number, this skill **runs autonomously (unattended) without pausing for user interaction or confirmation** and completes one of the following two outcomes end-to-end:
 
-- **Goal A (When open questions or decisions are needed)**: Do not guess or proceed with implementation. Organize the items requiring clarification, post them directly as a comment on the target Issue, report what was posted, and exit.
-- **Goal B (When implementation requirements are clear)**: Before writing code, **organize the specifications and technical requirements and post them as a comment on the target Issue**. Then create an isolated working environment using **`git worktree`** so other work is unaffected, and complete implementation, test/build verification, and PR (Pull Request) creation end-to-end. After creating the PR, clean up the temporary worktree and **always return to the original branch and original working state**.
+- **Goal A (When open questions or decisions are needed)**: Do not guess or proceed with implementation. Organize the items requiring clarification, post them directly as a comment on the target Issue, attach the `question` label (without changing the GitHub Project status), report what was posted, and exit.
+- **Goal B (When implementation requirements are clear)**: Before writing code, **organize the specifications and technical requirements and post them as a comment on the target Issue**. Remove the `question` label if it is currently attached, and update the Issue's GitHub Project (Projects v2) `Status` to `In Progress` if the repository/Issue uses GitHub Projects (non-blocking: warn and continue if unregistered or unavailable). Then create an isolated working environment using **`git worktree`** so other work is unaffected, and complete implementation, test/build verification, and PR (Pull Request) creation end-to-end. After creating the PR, clean up the temporary worktree and **always return to the original branch and original working state**.
 
 > **Note**: This skill does not use Spec Kit (`speckit-specify` / `speckit-plan` / `speckit-task`). Specifications and technical requirements are recorded directly as an Issue comment before proceeding with implementation.
 
@@ -27,7 +27,15 @@ Before starting work, verify the environment and project structure.
    - **Security Prohibition**: Never directly read the contents of `~/.config/github-app/.env` or `.pem` private key files as an agent (all authentication handling must remain encapsulated inside `gh-as-bot.mjs`).
    - **GitHub MCP Tools**: GitHub MCP tools do not read `~/.config/github-app/.env` and would post under the personal account; therefore, avoid them by default and use `gh-as-bot.mjs` instead (only fall back to GitHub MCP tools in environments where `~/.config/github-app/.env` does not exist and the `gh` CLI is unavailable).
    - As a pre-check, confirm that the current repository is linked to the target GitHub repository, and if `~/.config/github-app/.env` does not exist, confirm authentication via `gh auth status`.
-2. **Project Conventions**:
+2. **GitHub Projects (Projects v2) Status Helper**:
+   - To update the Issue's GitHub Project `Status` field (e.g., to `In Progress`) when starting implementation, use the bundled helper script `scripts/update-project-status.mjs`:
+     ```bash
+     node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/update-project-status.mjs <issue-number> --status "In Progress"
+     ```
+   - For **Organization** repositories, the script uses the GitHub App Bot token when configured (requiring **Organization permissions → Projects: Read and write** on the App).
+   - For **personal (`User`)** repositories, GitHub App Installation Access Tokens cannot access user-owned Projects v2, so the script automatically uses the locally authenticated `gh` CLI (requiring the `project` scope, e.g., `gh auth refresh -s project`).
+   - Status updates are non-blocking: if the repository does not use GitHub Projects, or if the Issue is unregistered, lacks an `In Progress` option, or lacks Project permissions, the script outputs a notice/warning and exits `0` so implementation proceeds.
+3. **Project Conventions**:
    - If the repository contains contribution guidelines, development guides, or rule definitions (such as `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `.github/pull_request_template.md`, etc.), follow those conventions throughout design, implementation, testing, and PR creation.
 
 ---
@@ -53,8 +61,14 @@ Cross-check the Issue details (including existing comments) against the codebase
 1. Structure the points into "Open Questions / Decisions Needed", "Possible Options (include a recommended option with rationale if applicable)", and "Impact on Implementation".
 2. Compose a comment for the target Issue and post it directly **without asking the user for prior confirmation or permission**.
    - Example: `node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs issue comment <issue-number> --body "<comment-body>"`
-3. **Exit Decision (Goal A Complete — Do Not Wait for Replies)**:
-   - When specifications or implementation direction cannot be finalized, **stop without proceeding to implementation** as soon as the comment is posted to the Issue, and output the posted comment and the Issue URL in your final report. Do not ask the user for answers in chat or pause waiting for a response.
+3. **Attach the `question` Label (Do Not Change Project Status)**:
+   - Add the `question` label to the Issue via `gh-as-bot.mjs` (if the `question` label does not exist in the repository yet, create it first and retry; if label creation/assignment fails, include a warning in the final report and continue):
+     ```bash
+     node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs issue edit <issue-number> --add-label "question"
+     ```
+   - Do **not** update the GitHub Project status when exiting for open questions.
+4. **Exit Decision (Goal A Complete — Do Not Wait for Replies)**:
+   - When specifications or implementation direction cannot be finalized, **stop without proceeding to implementation** as soon as the comment is posted and the `question` label is handled, and output the posted comment, label status, and the Issue URL in your final report. Do not ask the user for answers in chat or pause waiting for a response.
 
 **If implementation requirements are sufficiently clear**:
 - Do not post unnecessary clarification comments; proceed directly to Step 3.
@@ -70,7 +84,18 @@ Before starting implementation, articulate the planned implementation based on t
    - **Verification Plan**: Tests to add/update and build/check commands to run
 2. **Without asking the user for prior permission**, post the organized summary directly as a comment on the target Issue.
    - Example: `node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs issue comment <issue-number> --body "<spec-and-tech-requirements-comment>"`
-3. After posting, proceed immediately to Step 4 without waiting for confirmation.
+3. **Remove the `question` Label (If Present)**:
+   - Check the Issue's labels fetched in Step 1. If the `question` label is attached, remove it via `gh-as-bot.mjs` (if removal fails, log a warning and continue):
+     ```bash
+     node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs issue edit <issue-number> --remove-label "question"
+     ```
+4. **Update GitHub Project Status to `In Progress` (When GitHub Projects v2 Is Used)**:
+   - Run the bundled Project status helper script before starting implementation:
+     ```bash
+     node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/update-project-status.mjs <issue-number> --status "In Progress"
+     ```
+   - The script automatically checks whether the repository/Issue uses open GitHub Projects (Projects v2). If not, it skips cleanly. If the Issue is not registered in an open Project, the `In Progress` option is missing, or Project permissions are insufficient, record the printed warning and **proceed with implementation**.
+5. After completing the steps above, proceed immediately to Step 4 without waiting for confirmation.
 
 ### 4. Set Up an Isolated Working Environment with `git worktree`
 To avoid affecting any ongoing work in the original working directory (such as uncommitted changes or the currently checked-out branch), **create a dedicated working directory and branch using `git worktree`**.
@@ -102,7 +127,7 @@ To avoid affecting any ongoing work in the original working directory (such as u
    - Change the current working directory back to the **original repository root** recorded in Step 1.
    - Remove and clean up the temporary worktree (e.g., `git worktree remove <worktree-path>`, and `git worktree prune` if needed). *Because changes have already been committed and pushed, the worktree can be safely removed (if untracked files such as installed dependencies prevent removal, inspect and clean up unneeded build/dependency artifacts before removing).*
    - In the original repository root, check `git branch --show-current` and ensure you are **back on the exact branch that was active at the start** (if it changed for any reason, restore it with `git checkout <original-branch>`).
-7. Report the final results to the user (the referenced Issue, the Issue comment posted—either specifications/technical requirements or open questions—created/modified source files, test/build verification results, **the URL of the created PR**, and confirmation that the worktree was removed and the original branch was restored).
+7. Report the final results to the user (the referenced Issue, the Issue comment posted—either specifications/technical requirements or open questions—any `question` label or GitHub Project `Status` changes or warnings, created/modified source files, test/build verification results, **the URL of the created PR**, and confirmation that the worktree was removed and the original branch was restored).
 
 ---
 
@@ -149,6 +174,6 @@ Before starting implementation on this Issue, I will proceed with the following 
 - **No Spec Kit; Pre-Implementation Spec & Tech Requirements Comment Required**: Do not use Spec Kit in this skill. Even when requirements are clear, never jump straight into writing code—always organize the specifications and technical requirements and post them as an Issue comment before starting implementation.
 - **Work Isolation via `git worktree` and Restoration of Original Branch**: Always perform implementation and verification inside a dedicated `git worktree` so the original working directory (any ongoing work or uncommitted changes) is completely untouched. After creating the PR (or upon early exit), always clean up the temporary worktree and return to the original working directory and original branch.
 - **Passing Unit Tests and Build Checks Required**: Whenever the project defines unit tests or build checks (including lint, type checks, etc.), you must run and pass all of them before creating a PR. Creating a PR while tests or builds are failing or unverified is prohibited.
-- **Automatic Posting of Issue Comments and PR Creation**: Post Issue comments (for open questions or specifications/technical requirements) and create the PR after implementation and verification (including committing and pushing the working branch) without requesting prior permission from the user, and include the results (posted content and PR URL) in the final report. Write clearly, accurately, and respectfully so third-party readers can easily understand the intent.
+- **Automatic Posting of Issue Comments, Labels, Project Status Updates, and PR Creation**: Post Issue comments (for open questions or specifications/technical requirements), toggle the `question` label (add on Goal A, remove on Goal B), update the GitHub Project `Status` to `In Progress` when applicable (non-blocking on warnings), and create the PR after implementation and verification (including committing and pushing the working branch) without requesting prior permission from the user, and include the results (posted content, label/Project status outcomes or warnings, and PR URL) in the final report. Write clearly, accurately, and respectfully so third-party readers can easily understand the intent.
 - **No Guessing Ambiguous Specifications**: Do not guess or invent specifications when design choices or requirements are unclear. Register open questions as a comment on the target Issue, report it, and exit.
 - **No Destructive Git Operations**: Committing to the working branch, pushing the working branch, and creating a PR are permitted, but never push directly to default branches (`main` / `master`, etc.), force-push (`git push --force`), merge PRs, or directly close Issues unless explicitly instructed by the user.
