@@ -4,9 +4,9 @@ An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
 
 ## `idd-implement` Skill Documentation
 
-An autonomous, non-interactive skill that starts from a GitHub Issue number and executes the full workflow end-to-end: **reviewing requirements and open questions → posting a specification/technical requirements comment (or exiting after posting a clarification comment) → implementing and verifying in a `git worktree` → creating a Pull Request → returning to the original branch**.
+An autonomous, non-interactive skill that starts from a GitHub Issue number and executes the full workflow end-to-end: **reviewing requirements and open questions → posting a specification/technical requirements comment (or adding the `question` label and exiting after posting a clarification comment) → removing `question` if present & updating GitHub Project `Status` to `In Progress` → implementing and verifying in a `git worktree` → creating a Pull Request → returning to the original branch**.
 
-Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs), the skill posts Issue comments and creates Pull Requests **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is present**, or **as the locally authenticated GitHub user** when it is not configured.
+Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs), the skill posts Issue comments, updates labels, and creates Pull Requests **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is present**, or **as the locally authenticated GitHub user** when it is not configured. For GitHub Projects (Projects v2) `Status` updates, [`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) uses the Bot token for Organization repositories and falls back to the locally authenticated `gh` user for personal (`User`) repositories (since GitHub App Installation Tokens cannot access user-owned Projects v2).
 
 ---
 
@@ -28,6 +28,7 @@ Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implemen
 - **Node.js** (v18 or later recommended; uses built-in modules only, so `npm install` is not required)
 - **GitHub CLI (`gh`)**
   - Must be authenticated via `gh auth login` if not using a GitHub App
+  - If you use **GitHub Projects (Projects v2)** on a **personal (`User`)** repository, ensure your local `gh` CLI includes the `project` scope (`gh auth refresh -s project`), even when using a GitHub App Bot for comments and PRs.
 - **Git** (with `git worktree` support)
 
 ---
@@ -65,10 +66,11 @@ If you want AI-generated Issue comments and Pull Requests to be separated from y
    - **Identifying and authorizing users (Callback URL, etc.)**: Leave all fields **blank**.
 3. Under the **Webhook** section, **uncheck Active** (since the script runs locally and does not use a webhook receiver server).
 4. Under **Permissions** → **Repository permissions**, configure the following permissions:
-   - **Issues**: `Read and write` (required to view Issues and post comments)
+   - **Issues**: `Read and write` (required to view Issues, post comments, and manage labels such as `question`)
    - **Pull requests**: `Read and write` (required to create and update PRs)
    - **Contents**: `Read and write` (required if `git push` is performed with a Bot token in the future; `Read-only` is sufficient if pushing with standard local `git` credentials)
    - **Metadata**: Automatically set to `Read-only`.
+   - *(If using an **Organization** with GitHub Projects v2)* Under **Permissions** → **Organization permissions**, also set **Projects** to `Read and write` (do not confuse this with Repository-level Projects, which applies only to Projects classic). After installing or updating permissions on the Organization, approve them via **Accept new permissions**.
 5. Under **Where can this GitHub App be installed?**, select **Only on this account**, then click **Create GitHub App**.
 6. On the created app's settings page, note the **App ID** (numeric) shown in the **About** section.
 7. Scroll down to the **Private keys** section on the same page, click **Generate a private key**, and download the `.pem` file.
@@ -161,3 +163,7 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 - **Comments or PRs are still posted under your personal account**
   - Check that `~/.config/github-app/.env` has the exact path and filename.
   - Check whether the agent called `gh` directly or used GitHub MCP tools instead of `gh-as-bot.mjs` ([SKILL.md](./skills/idd-implement/SKILL.md) specifies prioritizing `gh-as-bot.mjs`).
+- **GitHub Project `Status` is not updated to `In Progress`**
+  - **Personal (`User`) repository**: GitHub App Installation Tokens cannot access user-owned Projects v2, so `update-project-status.mjs` uses your local `gh` CLI. Run `gh auth refresh -s project` if the `project` scope is missing.
+  - **Organization repository**: Ensure the GitHub App has **Organization permissions → Projects: `Read and write`** enabled and approved (**Accept new permissions**) on the Organization installation.
+  - **Non-blocking warnings**: If the repository does not use Projects v2, the Issue is not registered in an open Project, or the Project's `Status` field has no `In Progress` option, `update-project-status.mjs` outputs a notice/warning and exits `0` so implementation continues.

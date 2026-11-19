@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Expands home directory shorthand (`~`, `$HOME`, `${HOME}`) in a path string.
@@ -310,18 +311,28 @@ function loadBotConfig() {
 }
 
 /**
+ * `gh` CLI 実行用の環境変数オブジェクトを構築する関数
+ * @param botToken - Bot 認証トークン（通常実行時は未指定）
+ * @returns 子プロセスへ渡す環境変数マップ
+ */
+export function buildGhEnv(botToken) {
+  const childEnv = { ...process.env };
+  if (botToken) {
+    // 既存のトークン環境変数を上書きし、確実に Bot トークンで実行する
+    delete childEnv.GITHUB_TOKEN;
+    childEnv.GH_TOKEN = botToken;
+  }
+  return childEnv;
+}
+
+/**
  * Executes the `gh` CLI with the specified arguments and propagates its exit code.
  * @param args - Argument array passed to `gh`
  * @param botToken - Bot authentication token (omitted during standard execution)
  * @returns Exit code of the `gh` process
  */
 function runGhCommand(args, botToken) {
-  const childEnv = { ...process.env };
-  if (botToken) {
-    // Prevent existing env token overrides and ensure execution uses the Bot token
-    delete childEnv.GITHUB_TOKEN;
-    childEnv.GH_TOKEN = botToken;
-  }
+  const childEnv = buildGhEnv(botToken);
 
   const result = spawnSync('gh', args, {
     stdio: 'inherit',
@@ -334,6 +345,23 @@ function runGhCommand(args, botToken) {
   }
 
   return typeof result.status === 'number' ? result.status : 1;
+}
+
+export { fetchInstallationToken, loadBotConfig, resolveTargetRepository };
+
+/**
+ * 現在のスクリプトが CLI のエントリポイントとして直接実行されているかを判定する関数
+ * @returns 直接実行されている場合は true、モジュールとしてインポートされた場合は false
+ */
+function isDirectExecution() {
+  if (!process.argv[1]) return false;
+  try {
+    const selfPath = fs.realpathSync(fileURLToPath(import.meta.url));
+    const entryPath = fs.realpathSync(process.argv[1]);
+    return selfPath === entryPath;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -371,4 +399,6 @@ async function main() {
   }
 }
 
-main();
+if (isDirectExecution()) {
+  main();
+}

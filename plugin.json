@@ -1,6 +1,6 @@
 {
   "name": "idd-skills",
-  "displayName": "IDD Skills",
+  "displayName": "@sawarame's IDD Skills",
   "version": "1.0.0",
   "description": "Issue-driven development (IDD) skills that inspect GitHub Issues, post specifications or clarification comments, implement and verify changes in isolated git worktrees, and open pull requests.",
   "author": {
