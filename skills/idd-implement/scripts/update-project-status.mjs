@@ -93,23 +93,30 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
 `;
 
 /**
- * CLI 引数を解析し、Issue 番号および対象ステータス名を抽出する関数
+ * CLI 引数を解析し、Issue 番号・対象ステータス候補・任意更新フラグを抽出する関数
  * @param argv - コマンドライン引数の配列
- * @returns 解析結果オブジェクト（issueNumber, targetStatus）
+ * @returns 解析結果オブジェクト（issueNumber, targetStatuses, optional）
  */
 function parseCliArgs(argv) {
   let issueNumber = null;
-  let targetStatus = DEFAULT_TARGET_STATUS;
+  const targetStatuses = [];
+  let optional = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--status' && argv[i + 1]) {
-      targetStatus = argv[i + 1].trim();
+      const value = argv[i + 1].trim();
+      if (value) targetStatuses.push(value);
       i += 1;
       continue;
     }
     if (arg.startsWith('--status=')) {
-      targetStatus = arg.slice(9).trim();
+      const value = arg.slice(9).trim();
+      if (value) targetStatuses.push(value);
+      continue;
+    }
+    if (arg === '--optional') {
+      optional = true;
       continue;
     }
     if ((arg === '-R' || arg === '--repo') && argv[i + 1]) {
@@ -130,7 +137,11 @@ function parseCliArgs(argv) {
     }
   }
 
-  return { issueNumber, targetStatus };
+  return {
+    issueNumber,
+    targetStatuses: targetStatuses.length > 0 ? targetStatuses : [DEFAULT_TARGET_STATUS],
+    optional
+  };
 }
 
 /**
@@ -228,14 +239,15 @@ function normalizeLabel(value) {
 }
 
 /**
- * 単一の Project アイテムの Status フィールドを指定値へ更新する関数
+ * 単一の Project アイテムの Status フィールドを指定候補のいずれかへ更新する関数
  * @param item - GraphQL で取得した ProjectV2Item オブジェクト
  * @param issueNumber - 対象の Issue 番号
- * @param targetStatus - 設定したいステータス名
+ * @param targetStatuses - 設定したいステータス名候補の配列（先頭から優先して一致検索）
  * @param authToken - 使用する認証トークン（ローカル実行時は undefined）
+ * @param optional - 候補ステータスが Project に存在しない場合に警告を出さずスキップするか
  * @returns 処理結果（警告時も呼び出し元で続行するため例外は内部で処理）
  */
-function updateSingleProjectItem(item, issueNumber, targetStatus, authToken) {
+function updateSingleProjectItem(item, issueNumber, targetStatuses, authToken, optional) {
   const project = item.project;
   const fields = project.fields?.nodes ?? [];
   const statusField = fields.find(
@@ -252,14 +264,26 @@ function updateSingleProjectItem(item, issueNumber, targetStatus, authToken) {
     return;
   }
 
-  const targetOption = statusField.options.find(
-    option => option && normalizeLabel(option.name) === normalizeLabel(targetStatus)
-  );
+  // 指定された候補ステータスを先頭から順に検索し、最初に一致した選択肢を採用する
+  let targetOption = null;
+  for (const candidate of targetStatuses) {
+    targetOption = statusField.options.find(
+      option => option && normalizeLabel(option.name) === normalizeLabel(candidate)
+    );
+    if (targetOption) break;
+  }
 
   if (!targetOption) {
+    const expectedLabel = targetStatuses.join('" / "');
+    if (optional) {
+      console.log(
+        `[update-project-status] Info: Project "${project.title}" (#${project.number}) does not have a "${expectedLabel}" option in "Status"; skipping.`
+      );
+      return;
+    }
     const availableOptions = statusField.options.map(option => option.name).join(', ');
     console.warn(
-      `[update-project-status] Warning: Project "${project.title}" (#${project.number}) does not have a "${targetStatus}" option in "Status" (available: ${availableOptions}). Continuing.`
+      `[update-project-status] Warning: Project "${project.title}" (#${project.number}) does not have a "${expectedLabel}" option in "Status" (available: ${availableOptions}). Continuing.`
     );
     return;
   }
@@ -296,11 +320,11 @@ function updateSingleProjectItem(item, issueNumber, targetStatus, authToken) {
  */
 async function main() {
   const args = process.argv.slice(2);
-  const { issueNumber, targetStatus } = parseCliArgs(args);
+  const { issueNumber, targetStatuses, optional } = parseCliArgs(args);
 
-  if (!issueNumber || !targetStatus) {
+  if (!issueNumber || targetStatuses.length === 0) {
     console.error(
-      'Usage: node update-project-status.mjs <issue-number> [--status "In Progress"] [-R owner/repo]'
+      'Usage: node update-project-status.mjs <issue-number> [--status "In Progress"] [--optional] [-R owner/repo]'
     );
     process.exit(1);
   }
@@ -400,7 +424,7 @@ async function main() {
 
   for (const item of openIssueItems) {
     try {
-      updateSingleProjectItem(item, issueNumber, targetStatus, projectAuthToken);
+      updateSingleProjectItem(item, issueNumber, targetStatuses, projectAuthToken, optional);
     } catch (err) {
       console.warn(formatPermissionWarning(err.message, ownerType, usedBotToken));
     }
