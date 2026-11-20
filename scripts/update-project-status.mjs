@@ -345,10 +345,11 @@ async function main() {
       botToken = await fetchInstallationToken({ ...botConfig, args });
     }
   } catch (err) {
+    // GitHub App の情報不足や認証失敗時はローカルの gh 認証へフォールバックする
     console.warn(
-      `[update-project-status] Warning: Could not acquire Bot token (${err.message}). Continuing without updating Project status.`
+      `[update-project-status] Warning: Could not acquire Bot token (${err.message}). Falling back to local gh authentication.`
     );
-    process.exit(0);
+    botToken = undefined;
   }
 
   let ownerType = 'User';
