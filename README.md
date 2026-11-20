@@ -6,22 +6,25 @@ An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
 
 ## `idd-implement` Skill Documentation
 
-An autonomous, non-interactive skill that starts from a GitHub Issue number and executes the full workflow end-to-end: **reviewing requirements and open questions → posting a specification/technical requirements comment (or adding the `question` label and exiting after posting a clarification comment) → removing `question` if present & updating GitHub Project `Status` to `In Progress` immediately before implementation → implementing and verifying in a `git worktree` → creating a Pull Request → updating GitHub Project `Status` to `In Review` if available → returning to the original branch**.
+An autonomous, non-interactive skill that starts from a GitHub Issue number or Pull Request number and executes the full workflow end-to-end:
 
-Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs), the skill posts Issue comments, updates labels, and creates Pull Requests **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is present**, or **as the locally authenticated GitHub user** when it is not configured. For GitHub Projects (Projects v2) `Status` updates, [`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) uses the Bot token for Organization repositories and falls back to the locally authenticated `gh` user for personal (`User`) repositories (since GitHub App Installation Tokens cannot access user-owned Projects v2).
+- **New Issue Implementation Flow**: Reviewing requirements and open questions → posting a specification/technical requirements comment (or adding the `question` label and exiting after posting a clarification comment) → removing `question` if present & updating GitHub Project `Status` to `In Progress` immediately before implementation → implementing and verifying in a `git worktree` → creating a Pull Request → updating GitHub Project `Status` to `In Review` if available → returning to the original branch.
+- **PR Review Response Flow**: When invoked with a PR number (or an Issue number that already has an open PR with review feedback), inspects PR reviews, conversation comments, unresolved inline diff review threads, and linked Issues → posts clarification questions on the PR and exits if feedback is ambiguous → updates the linked Issue's Project `Status` to `In Progress` → checks out the existing PR branch in a `git worktree`, implements and verifies fixes → commits & pushes updates → replies to addressed inline review comments, posts a PR summary comment, and requests re-review → updates Project `Status` to `In Review` if available → cleans up the worktree and returns to the original branch.
+
+Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs), the skill posts Issue/PR comments, inline review replies, label updates, and Pull Requests **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is configured and Bot authentication succeeds**, or falls back to **the locally authenticated GitHub user** when GitHub App configuration is absent or authentication fails (when posting comments or review replies as the local user, `（🤖AIによる投稿）` is automatically appended after the first heading—or prepended when no heading is present—to clearly indicate an AI-authored comment). For GitHub Projects (Projects v2) `Status` updates, [`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) uses the Bot token for Organization repositories (falling back to local `gh` authentication if unconfigured or Bot auth fails) and uses the locally authenticated `gh` user for personal (`User`) repositories (since GitHub App Installation Tokens cannot access user-owned Projects v2).
 
 ---
 
 ## Behavior (Authentication Switching Rules)
 
-| Condition | Authentication Identity Used |
-| :--- | :--- |
-| `~/.config/github-app/.env` **exists** | Installation Access Token of the GitHub App (`<app-name>[bot]`) specified in `.env` |
-| `~/.config/github-app/.env` **does not exist** | The user currently logged into the local `gh` CLI (`gh auth status`) |
+| Condition | Authentication Identity Used | Comment Body Formatting |
+| :--- | :--- | :--- |
+| `~/.config/github-app/.env` **exists and Bot authentication succeeds** | Installation Access Token of the GitHub App (`<app-name>[bot]`) specified in `.env` | Posted as-is (GitHub displays the `[bot]` badge) |
+| GitHub App configuration is missing, or **authentication fails** | Falls back with a warning to the user currently logged into the local `gh` CLI (`gh auth status`) | Automatically appends `（🤖AIによる投稿）` after the first heading |
 
-> [!IMPORTANT]
-> **Preventing Unintended Posts from a Personal Account**
-> If `~/.config/github-app/.env` exists and there are missing configuration values, a missing `.pem` file, or an API authentication error, `gh-as-bot.mjs` will fail with an error rather than silently falling back to your personal account.
+> [!NOTE]
+> **Fallback to Local User and AI Post Attribution**
+> If `~/.config/github-app/.env` does not exist—or if GitHub App authentication fails due to missing configuration values, a missing `.pem` file, the App not being installed on the target repository, or an API authentication error—`gh-as-bot.mjs` outputs a warning and falls back to the locally authenticated `gh` user. In that case, `gh-as-bot.mjs` automatically appends `（🤖AIによる投稿）` right after the first heading in `issue comment` / `pr comment` / `pr review` bodies and comment/reply API calls (e.g., `### Specifications & Functional Requirements（🤖AIによる投稿）`) so readers can tell the comment was posted by AI. If the body has no headings, it prepends the marker; if already present, it is not duplicated.
 
 ---
 
@@ -180,7 +183,7 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 - **`Resource not accessible by integration` (`HTTP 403`)**
   - The GitHub App may be missing `Issues: Read and write` or `Pull requests: Read and write` under **Repository permissions**. After updating permissions, you may need to approve the updated permissions on the installation page in GitHub (**Accept new permissions**).
 - **Comments or PRs are still posted under your personal account**
-  - Check that `~/.config/github-app/.env` has the exact path and filename.
+  - Check that `~/.config/github-app/.env` has the exact path and filename, and check stderr for `[gh-as-bot] Warning:` messages indicating Bot authentication fell back to the local user.
   - Check whether the agent called `gh` directly or used GitHub MCP tools instead of `gh-as-bot.mjs` ([SKILL.md](./skills/idd-implement/SKILL.md) specifies prioritizing `gh-as-bot.mjs`).
 - **GitHub Project `Status` is not updated to `In Progress` or `In Review`**
   - **Personal (`User`) repository**: GitHub App Installation Tokens cannot access user-owned Projects v2, so `update-project-status.mjs` uses your local `gh` CLI. Run `gh auth refresh -s project` if the `project` scope is missing.

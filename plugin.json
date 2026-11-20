@@ -2,7 +2,7 @@
   "name": "idd-skills",
   "displayName": "@sawarame's IDD Skills",
   "version": "1.0.0",
-  "description": "Issue-driven development (IDD) skills that inspect GitHub Issues, post specifications or clarification comments, implement and verify changes in isolated git worktrees, and open pull requests.",
+  "description": "Issue-driven development (IDD) skills that inspect GitHub Issues and PR review feedback, post specifications, clarification comments, or review replies, implement and verify changes in isolated git worktrees, and create or update pull requests.",
   "author": {
     "name": "sawarame",
     "url": "https://github.com/sawarame"
@@ -11,7 +11,8 @@
   "suggestedPrompts": [
     "Implement GitHub Issue #123 using idd-implement",
     "Check GitHub Issue #123 for ambiguities and post clarification questions if needed",
-    "Review requirements for Issue #123, implement in a git worktree, and create a PR"
+    "Review requirements for Issue #123, implement in a git worktree, and create a PR",
+    "Address PR review comments on PR #45 using idd-implement"
   ],
   "enabled": true
 }

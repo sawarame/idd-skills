@@ -6,22 +6,25 @@
 
 ## `idd-implement` スキル概要
 
-GitHub の Issue 番号を起点として、**要件・不明点の確認 → 仕様・技術要件コメントの投稿（または確認コメントを投稿して `question` ラベルを付与し終了） → `question` ラベルの解除と GitHub Project `Status` の `In Progress` への更新（実装直前） → `git worktree` 上での実装とテスト・ビルド検証 → Pull Request の作成 → GitHub Project `Status` の `In Review` への更新（選択肢がある場合） → 元のブランチへの復帰** までを、確認待ちなしで自律的に完結させるスキルです。
+GitHub の Issue 番号または Pull Request 番号を起点として、以下のフローを確認待ちなしで自律的に完結させるスキルです。
 
-同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) により、**`~/.config/github-app/.env` が存在する場合は専用の GitHub App（`<app-name>[bot]`）として**、存在しない場合は **ローカルでログイン中の GitHub ユーザーとして** Issue コメントやラベル操作・PR 作成を行います。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
+- **新規 Issue 実装フロー**: 要件・不明点の確認 → 仕様・技術要件コメントの投稿（または確認コメントを投稿して `question` ラベルを付与し終了） → `question` ラベルの解除と GitHub Project `Status` の `In Progress` への更新（実装直前） → `git worktree` 上での実装とテスト・ビルド検証 → Pull Request の作成 → GitHub Project `Status` の `In Review` への更新（選択肢がある場合） → 元のブランチへの復帰
+- **PR レビュー対応フロー**: PR 番号（またはオープン中の PR を持つ Issue 番号）を指定すると、PR のレビュー・通常コメント・インラインの差分レビューコメント（未解決スレッド）および紐づく Issue を確認 → 不明点があれば PR へ確認コメントを投稿して終了 → 紐づく Issue の `Status` を `In Progress` に更新 → PR の既存ブランチを `git worktree` でチェックアウトして修正・テスト検証 → コミット＆プッシュ → インラインコメントへの返信・PR サマリーコメント投稿・再レビュー依頼 → `Status` を `In Review` に更新（選択肢がある場合） → 元のブランチへの復帰
+
+同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) により、**`~/.config/github-app/.env` が存在し Bot 認証に成功した場合は専用の GitHub App（`<app-name>[bot]`）として**、設定情報がない場合や認証に通らなかった場合は **ローカルでログイン中の GitHub ユーザーとして** Issue / PR コメントやレビュー返信・ラベル操作・PR 作成を行います（ローカルユーザーとしてコメント・レビュー返信を投稿する場合は、AI による投稿であることを明示するため、最初の見出しの後に `（🤖AIによる投稿）` が自動で記載されます；見出しがない本文では先頭に付与されます）。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し（未設定・認証失敗時はローカル認証へフォールバック）、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
 
 ---
 
 ## 動作仕様（認証の切り替えルール）
 
-| 条件 | 使用される認証主体 |
-| :--- | :--- |
-| `~/.config/github-app/.env` が **存在する** | `.env` で指定された GitHub App（`<app-name>[bot]`）の Installation Access Token |
-| `~/.config/github-app/.env` が **存在しない** | ローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`） |
+| 条件 | 使用される認証主体 | コメント本文への表記 |
+| :--- | :--- | :--- |
+| `~/.config/github-app/.env` が **存在し、Bot 認証に成功した** | `.env` で指定された GitHub App（`<app-name>[bot]`）の Installation Access Token | そのまま投稿（GitHub 上で `[bot]` バッジが表示） |
+| GitHub App の情報がない、または **認証に通らなかった** | 警告を出力した上でローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`） | 最初の見出しの後に `（🤖AIによる投稿）` を自動追記 |
 
-> [!IMPORTANT]
-> **意図しない個人アカウントからの投稿防止**
-> `~/.config/github-app/.env` が存在する場合に、設定値の不足や `.pem` ファイルの欠落、API 認証エラーが発生したときは、個人アカウントへ暗黙フォールバックせずエラーで停止します。
+> [!NOTE]
+> **ローカルユーザーへのフォールバックと AI 投稿の明示**
+> `~/.config/github-app/.env` が存在しない場合に加えて、設定値の不足や `.pem` ファイルの欠落、対象リポジトリへの未インストール、API 認証エラーなどで GitHub App の認証が通らなかった場合は、警告を出力してローカルでログイン中の `gh` ユーザーへフォールバックします。その際、`gh-as-bot.mjs` は `issue comment` / `pr comment` / `pr review` およびレビュー返信 API 呼び出しの本文にある最初の見出しの直後に「`（🤖AIによる投稿）`」を自動付与します（例: `### 仕様・機能要件（🤖AIによる投稿）`）。見出しが含まれない本文の場合は先頭に付与し、すでに記載済みの場合は重複付与しません。
 
 ---
 
@@ -180,7 +183,7 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 - **`Resource not accessible by integration`（`HTTP 403`）**
   - GitHub App の **Repository permissions** で `Issues: Read and write` または `Pull requests: Read and write` が不足している可能性があります。権限変更後は GitHub 上のインストール画面で変更の承認（**Accept new permissions**）が必要な場合があります。
 - **コメントや PR が個人アカウントのまま投稿される**
-  - `~/.config/github-app/.env` のパスとファイル名が正確か確認してください。
+  - `~/.config/github-app/.env` のパスとファイル名が正確か、また実行時の標準エラー出力に `[gh-as-bot] Warning:`（Bot 認証失敗によるフォールバック警告）が出ていないか確認してください。
   - エージェントが `gh-as-bot.mjs` を経由せず `gh` を直接呼び出したり、GitHub MCP ツールを使っていないか確認してください（[SKILL.md](./skills/idd-implement/SKILL.md) では `gh-as-bot.mjs` の優先使用を指定しています）。
 - **GitHub Project の `Status` が `In Progress` や `In Review` に更新されない**
   - **個人（`User`）リポジトリの場合**: GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため、`update-project-status.mjs` はローカルの `gh` CLI を使用します。`project` スコープが不足している場合は `gh auth refresh -s project` を実行してください。

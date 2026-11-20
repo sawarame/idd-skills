@@ -347,7 +347,309 @@ function runGhCommand(args, botToken) {
   return typeof result.status === 'number' ? result.status : 1;
 }
 
-export { fetchInstallationToken, loadBotConfig, resolveTargetRepository };
+const AI_POST_MARKER = '（🤖AIによる投稿）';
+
+/**
+ * コメント本文の最初の見出しの直後に AI 投稿マークを付与する関数
+ * @param body - 元のコメント本文
+ * @returns AI 投稿マーク付与後のコメント本文
+ */
+export function annotateAiCommentBody(body) {
+  if (typeof body !== 'string' || body.length === 0) {
+    return body;
+  }
+
+  // すでに AI 投稿マークが含まれている場合は重複付与しない
+  if (body.includes(AI_POST_MARKER)) {
+    return body;
+  }
+
+  const lineBreak = body.includes('\r\n') ? '\r\n' : '\n';
+  const lines = body.split(/\r?\n/);
+
+  let activeFenceChar = '';
+  let activeFenceLength = 0;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+
+    // フェンスコードブロック内の `#` コメントを見出しとして誤認しないようスキップする
+    if (activeFenceChar) {
+      const closeMatch = line.match(/^\s{0,3}(`{3,}|~{3,})\s*$/);
+      if (
+        closeMatch &&
+        closeMatch[1][0] === activeFenceChar &&
+        closeMatch[1].length >= activeFenceLength
+      ) {
+        activeFenceChar = '';
+        activeFenceLength = 0;
+      }
+      continue;
+    }
+
+    const openMatch = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (openMatch) {
+      const fence = openMatch[1];
+      const info = openMatch[2];
+      // CommonMark 仕様上、バッククォートフェンスの info 文字列にはバッククォートを含めない
+      if (!(fence[0] === '`' && info.includes('`'))) {
+        activeFenceChar = fence[0];
+        activeFenceLength = fence.length;
+        continue;
+      }
+    }
+
+    // ATX 見出し（# 〜 ######）を検出して見出しテキスト直後にマークを付与する
+    const atxMatch = line.match(/^(\s{0,3}#{1,6}[ \t]+.*?\S)([ \t]+#+)?([ \t]*)$/);
+    if (atxMatch) {
+      lines[i] = `${atxMatch[1]}${AI_POST_MARKER}${atxMatch[2] || ''}${atxMatch[3] || ''}`;
+      return lines.join(lineBreak);
+    }
+
+    // Setext 見出し（次行が === または ---）を検出する
+    if (
+      i + 1 < lines.length &&
+      line.trim().length > 0 &&
+      !/^\s{0,3}(?:>|#{1,6}[ \t]|[-*+][ \t]|\d+[.)][ \t]|---+\s*$|===+\s*$)/.test(line) &&
+      /^\s{0,3}(?:=+|-+)[ \t]*$/.test(lines[i + 1])
+    ) {
+      lines[i] = `${line.replace(/[ \t]+$/, '')}${AI_POST_MARKER}`;
+      return lines.join(lineBreak);
+    }
+  }
+
+  // 見出しが存在しない場合は先頭に AI 投稿マークを補う
+  return `${AI_POST_MARKER}${lineBreak}${lineBreak}${body}`;
+}
+
+/**
+ * `gh` CLI 引数から先頭の位置引数を抽出する関数
+ * @param args - `gh` CLI に渡す引数配列
+ * @param maxCount - 取得する位置引数の最大数
+ * @returns 抽出した位置引数の配列
+ */
+function extractPositionalArgs(args, maxCount = 2) {
+  const positional = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--') {
+      break;
+    }
+    if (
+      arg === '-R' ||
+      arg === '--repo' ||
+      arg === '-X' ||
+      arg === '--method' ||
+      arg === '-H' ||
+      arg === '--header' ||
+      arg === '-f' ||
+      arg === '--raw-field' ||
+      arg === '-F' ||
+      arg === '--field'
+    ) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      continue;
+    }
+    positional.push(arg);
+    if (positional.length >= maxCount) {
+      break;
+    }
+  }
+  return positional;
+}
+
+/**
+ * `gh` CLI 引数がコメント投稿サブコマンド（`issue comment` / `pr comment` / `pr review`）かを判定する関数
+ * @param args - `gh` CLI に渡す引数配列
+ * @returns コメント投稿サブコマンドの場合は true
+ */
+export function isCommentSubcommand(args) {
+  const positional = extractPositionalArgs(args, 2);
+  if (positional[0] === 'issue' && positional[1] === 'comment') {
+    return true;
+  }
+  if (positional[0] === 'pr' && (positional[1] === 'comment' || positional[1] === 'review')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * `gh api` 呼び出しがコメントまたはレビュー投稿エンドポイントへの書き込みかを判定する関数
+ * @param args - `gh` CLI に渡す引数配列
+ * @returns コメント投稿 API 呼び出しの場合は true
+ */
+export function isCommentApiCall(args) {
+  const positional = extractPositionalArgs(args, 2);
+  if (positional[0] !== 'api' || !positional[1]) {
+    return false;
+  }
+
+  // 明示的に GET が指定されている場合は読み取り専用とみなす
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--') break;
+    if ((arg === '-X' || arg === '--method') && args[i + 1]) {
+      if (args[i + 1].trim().toUpperCase() === 'GET') return false;
+      i += 1;
+    } else if (arg.startsWith('--method=') && arg.slice(9).trim().toUpperCase() === 'GET') {
+      return false;
+    } else if (arg.startsWith('-X') && arg.length > 2 && arg.slice(2).trim().toUpperCase() === 'GET') {
+      return false;
+    }
+  }
+
+  const endpoint = positional[1].replace(/^\/+/, '').split('?')[0];
+  return /^repos\/[^/]+\/[^/]+\/(?:issues\/\d+\/comments|pulls\/\d+\/comments(?:\/\d+\/replies)?|pulls\/\d+\/reviews)$/.test(
+    endpoint
+  );
+}
+
+/**
+ * ファイルまたは標準入力から本文を読み込み、AI 投稿マークを付与した一時ファイルを作成する関数
+ * @param sourcePath - 元の本文ファイルパス（`-` の場合は標準入力）
+ * @param tempDirs - クリーンアップ対象の一時ディレクトリ配列
+ * @returns 一時ファイルのパス（読み込み失敗時は null）
+ */
+function createAnnotatedBodyTempFile(sourcePath, tempDirs) {
+  try {
+    const rawContent =
+      sourcePath === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(sourcePath, 'utf8');
+    const annotated = annotateAiCommentBody(rawContent);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gh-as-bot-'));
+    tempDirs.push(tempDir);
+    const tempFile = path.join(tempDir, 'comment-body.md');
+    fs.writeFileSync(tempFile, annotated, 'utf8');
+    return tempFile;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `gh api` の `body=...` フィールド値へ AI 投稿マークを付与する関数
+ * @param fieldArg - `body=...` 形式のフィールド文字列
+ * @param allowFileRef - `@filepath` 形式のファイル参照を解釈するか（`-F` / `--field` の場合 true）
+ * @param tempDirs - クリーンアップ対象の一時ディレクトリ配列
+ * @returns 変換後の `body=...` 文字列（対象外の場合は null）
+ */
+function annotateApiBodyField(fieldArg, allowFileRef, tempDirs) {
+  if (!fieldArg.startsWith('body=')) {
+    return null;
+  }
+  const value = fieldArg.slice(5);
+  if (allowFileRef && value.startsWith('@')) {
+    const tempFile = createAnnotatedBodyTempFile(value.slice(1), tempDirs);
+    return tempFile ? `body=@${tempFile}` : null;
+  }
+  return `body=${annotateAiCommentBody(value)}`;
+}
+
+/**
+ * ローカルユーザーでのフォールバック実行向けに、コメント投稿引数の本文へ AI 投稿マークを付与する関数
+ * @param args - 元の `gh` CLI 引数配列
+ * @returns 変換後の引数配列と一時ファイル削除用の `cleanup` 関数を含むオブジェクト
+ */
+export function prepareCommentArgsForLocalUser(args) {
+  const isSubcommand = isCommentSubcommand(args);
+  const isApiCall = !isSubcommand && isCommentApiCall(args);
+  if (!isSubcommand && !isApiCall) {
+    return { args, cleanup: () => {} };
+  }
+
+  const nextArgs = [...args];
+  const tempDirs = [];
+
+  for (let i = 0; i < nextArgs.length; i += 1) {
+    const arg = nextArgs[i];
+    if (arg === '--') {
+      break;
+    }
+    if (arg === '-R' || arg === '--repo') {
+      i += 1;
+      continue;
+    }
+
+    if (isApiCall) {
+      if ((arg === '-f' || arg === '--raw-field') && i + 1 < nextArgs.length) {
+        const updated = annotateApiBodyField(nextArgs[i + 1], false, tempDirs);
+        if (updated) nextArgs[i + 1] = updated;
+        i += 1;
+        continue;
+      }
+      if ((arg === '-F' || arg === '--field') && i + 1 < nextArgs.length) {
+        const updated = annotateApiBodyField(nextArgs[i + 1], true, tempDirs);
+        if (updated) nextArgs[i + 1] = updated;
+        i += 1;
+        continue;
+      }
+      for (const [prefix, allowFileRef] of [
+        ['--raw-field=', false],
+        ['-f=', false],
+        ['--field=', true],
+        ['-F=', true]
+      ]) {
+        if (arg.startsWith(prefix)) {
+          const updated = annotateApiBodyField(arg.slice(prefix.length), allowFileRef, tempDirs);
+          if (updated) nextArgs[i] = `${prefix}${updated}`;
+          break;
+        }
+      }
+      continue;
+    }
+
+    if ((arg === '--body' || arg === '-b') && i + 1 < nextArgs.length) {
+      nextArgs[i + 1] = annotateAiCommentBody(nextArgs[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--body=')) {
+      nextArgs[i] = `--body=${annotateAiCommentBody(arg.slice(7))}`;
+      continue;
+    }
+    if (arg.startsWith('-b=')) {
+      nextArgs[i] = `-b=${annotateAiCommentBody(arg.slice(3))}`;
+      continue;
+    }
+
+    if ((arg === '--body-file' || arg === '-F') && i + 1 < nextArgs.length) {
+      const tempFile = createAnnotatedBodyTempFile(nextArgs[i + 1], tempDirs);
+      if (tempFile) {
+        nextArgs[i + 1] = tempFile;
+      }
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--body-file=')) {
+      const tempFile = createAnnotatedBodyTempFile(arg.slice(12), tempDirs);
+      if (tempFile) {
+        nextArgs[i] = `--body-file=${tempFile}`;
+      }
+      continue;
+    }
+    if (arg.startsWith('-F=')) {
+      const tempFile = createAnnotatedBodyTempFile(arg.slice(3), tempDirs);
+      if (tempFile) {
+        nextArgs[i] = `-F=${tempFile}`;
+      }
+      continue;
+    }
+  }
+
+  return {
+    args: nextArgs,
+    cleanup: () => {
+      for (const dir of tempDirs) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  };
+}
+
+export { AI_POST_MARKER, fetchInstallationToken, loadBotConfig, resolveTargetRepository };
 
 /**
  * 現在のスクリプトが CLI のエントリポイントとして直接実行されているかを判定する関数
@@ -365,8 +667,8 @@ function isDirectExecution() {
 }
 
 /**
- * Entry point. Switches authentication mode based on Bot configuration and executes `gh`.
- * @returns Promise resolving when execution completes
+ * CLI のエントリポイント。Bot 認証を試行し、設定未定義または認証失敗時はローカル gh ユーザーへフォールバックする関数
+ * @returns 実行完了時に解決する Promise
  */
 async function main() {
   const args = process.argv.slice(2);
@@ -379,24 +681,35 @@ async function main() {
   try {
     botConfig = loadBotConfig();
   } catch (err) {
-    console.error(`[gh-as-bot] Configuration error: ${err.message}`);
-    process.exit(1);
+    console.warn(
+      `[gh-as-bot] Warning: ${err.message} Falling back to locally authenticated gh user.`
+    );
   }
 
-  if (!botConfig) {
-    // When `.env` is not configured, run as the locally logged-in GitHub user
-    const exitCode = runGhCommand(args, undefined);
-    process.exit(exitCode);
+  let botToken = undefined;
+  if (botConfig) {
+    try {
+      botToken = await fetchInstallationToken({ ...botConfig, args });
+    } catch (err) {
+      console.warn(
+        `[gh-as-bot] Warning: Bot authentication failed (${err.message}). Falling back to locally authenticated gh user.`
+      );
+    }
   }
 
-  try {
-    const token = await fetchInstallationToken({ ...botConfig, args });
-    const exitCode = runGhCommand(args, token);
-    process.exit(exitCode);
-  } catch (err) {
-    console.error(`[gh-as-bot] Bot authentication error: ${err.message}`);
-    process.exit(1);
+  if (!botToken) {
+    // GitHub App の情報がない場合や認証に失敗した場合は、ローカルでログイン中の gh ユーザーとして実行する
+    const { args: fallbackArgs, cleanup } = prepareCommentArgsForLocalUser(args);
+    try {
+      const exitCode = runGhCommand(fallbackArgs, undefined);
+      process.exit(exitCode);
+    } finally {
+      cleanup();
+    }
   }
+
+  const exitCode = runGhCommand(args, botToken);
+  process.exit(exitCode);
 }
 
 if (isDirectExecution()) {
