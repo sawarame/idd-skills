@@ -10,8 +10,9 @@ It provides two complementary skills:
 
 ## `idd-issue` Skill Documentation
 
-An interactive skill for turning rough ideas or tasks into well-structured GitHub Issues ready for `idd-implement`:
+An interactive skill ([`SKILL.md`](./skills/idd-issue/SKILL.md)) for turning rough ideas or tasks into well-structured GitHub Issues ready for `idd-implement`:
 
+- **End-to-End Flow**: Initial idea or task input → read-only repository & existing Issue inspection → interactive brainstorming to resolve ambiguities → structured Issue drafting → mandatory full preview & explicit user confirmation → creating the Issue via `gh issue create` → suggesting `/idd-implement <issue-number>`.
 - **Read-Only Repository Exploration**: Inspects project conventions (`CONTRIBUTING.md`, `AGENTS.md`, `README*`, etc.), `.github/ISSUE_TEMPLATE/`, relevant codebase files, existing open Issues (to avoid duplicates), and repository labels without modifying any files or branches.
 - **Interactive Brainstorming**: Refines purpose, functional specifications, out-of-scope boundaries, technical considerations, and acceptance criteria through focused dialogue so downstream implementation does not stall on ambiguities.
 - **Mandatory Preview & Confirmation**: Presents the complete draft (target repository, local `gh` account, title, optional labels/assignees, and Markdown body) and waits for your explicit approval before posting.
@@ -32,6 +33,9 @@ Using the bundled wrapper scripts [`scripts/gh-as-bot.mjs`](./skills/idd-impleme
 ---
 
 ## Behavior (Authentication Switching Rules)
+
+> [!NOTE]
+> The Bot/local authentication switching below applies to **`idd-implement`**. **`idd-issue`** always invokes `gh issue create` directly as your locally authenticated `gh` CLI user (and never appends `（🤖AIによる投稿）`).
 
 | Condition | Authentication Identity Used | Comment Body & Git Commit/Push Behavior |
 | :--- | :--- | :--- |
@@ -95,11 +99,19 @@ git clone git@github.com:sawarame/idd-skills.git
 
 ### Other AI Agents / Project-Local Setup (`git subtree`)
 
-A dedicated `idd-implement` branch (split from `skills/idd-implement` via `git subtree split`) is available so that AI coding agents other than Google Antigravity can also use `idd-implement` directly from a target repository's `.agents/skills` directory.
+Dedicated `idd-issue` and `idd-implement` branches (split from `skills/idd-issue` and `skills/idd-implement` via `git subtree split`) are available so that AI coding agents other than Google Antigravity can also use either or both skills directly from a target repository's `.agents/skills` directory.
 
-Run the following command at the root of your target repository (requires a clean working tree):
+Run the following command(s) at the root of your target repository (requires a clean working tree):
 
 ```bash
+# idd-issue: Interactive brainstorming & GitHub Issue creation
+git subtree add \
+  --prefix=.agents/skills/idd-issue \
+  https://github.com/sawarame/idd-skills.git \
+  idd-issue \
+  --squash
+
+# idd-implement: Autonomous Issue implementation & PR review response
 git subtree add \
   --prefix=.agents/skills/idd-implement \
   https://github.com/sawarame/idd-skills.git \
@@ -110,13 +122,21 @@ git subtree add \
 If you prefer SSH, replace the repository URL with `git@github.com:sawarame/idd-skills.git`.
 
 > [!NOTE]
-> - **Adjusting `--prefix` for your AI agent**: Many agents read project-local skills from `.agents/skills/`, while some tools use `.agent/skills/` or `.claude/skills/`. Adjust `--prefix` (for example, `--prefix=.agent/skills/idd-implement`) to match your AI agent's skill directory.
-> - **Script paths**: The bundled helper scripts are located under the installed skill's `scripts/` directory (e.g., `.agents/skills/idd-implement/scripts/`). When running the commands in [Verification](#verification) manually, replace `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` with your installed path.
-> - **GitHub App configuration**: `~/.config/github-app/.env` is stored in your home directory, so Bot authentication works the same way across repositories. (Without it, the skill falls back to your local `gh` / `git` credentials.)
+> - **Adjusting `--prefix` for your AI agent**: Many agents read project-local skills from `.agents/skills/`, while some tools use `.agent/skills/` or `.claude/skills/`. Adjust `--prefix` (for example, `--prefix=.agent/skills/idd-issue` or `--prefix=.agent/skills/idd-implement`) to match your AI agent's skill directory.
+> - **Script paths (`idd-implement`)**: `idd-implement`'s bundled helper scripts are located under the installed skill's `scripts/` directory (e.g., `.agents/skills/idd-implement/scripts/`). When running the commands in [Verification](#verification) manually, replace `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` with your installed path. (`idd-issue` uses your local `gh` CLI directly and has no bundled scripts.)
+> - **GitHub App configuration**: `~/.config/github-app/.env` is stored in your home directory, so `idd-implement` Bot authentication works the same way across repositories. (Without it, `idd-implement` falls back to your local `gh` / `git` credentials.)
 
-To pull future updates to `idd-implement` into your repository:
+To pull future updates for either skill into your repository:
 
 ```bash
+# Update idd-issue
+git subtree pull \
+  --prefix=.agents/skills/idd-issue \
+  https://github.com/sawarame/idd-skills.git \
+  idd-issue \
+  --squash
+
+# Update idd-implement
 git subtree pull \
   --prefix=.agents/skills/idd-implement \
   https://github.com/sawarame/idd-skills.git \

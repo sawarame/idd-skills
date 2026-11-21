@@ -10,8 +10,9 @@
 
 ## `idd-issue` スキル概要
 
-アイデアや課題のメモから、`idd-implement` ですぐに実装に着手できる粒度の GitHub Issue を対話的に作成するスキルです。
+アイデアや課題のメモから、`idd-implement` ですぐに実装に着手できる粒度の GitHub Issue を対話的に作成するスキル（[`SKILL.md`](./skills/idd-issue/SKILL.md)）です。
 
+- **全体フロー**: 作りたいもの・課題の初期入力 → 読み取り専用でのリポジトリ・既存 Issue 調査 → 対話型ブレストによる要件の具体化 → 構造化 Issue ドラフトの作成 → 投稿前の完全プレビュー＆明示的承認 → `gh issue create` による起票 → `/idd-implement <番号>` への導線案内
 - **読み取り専用でのリポジトリ調査**: コードベースやプロジェクト規約（`CONTRIBUTING.md` / `AGENTS.md` / `README*` 等）、`.github/ISSUE_TEMPLATE/`、既存のオープン Issue（重複・関連確認）、利用可能なラベルを読み取り専用で参照します（ファイルやブランチの変更は行いません）。
 - **対話型ブレスト・要件整理**: 背景・目的、要件・仕様、対象外（Out of Scope）、技術的考慮事項、受け入れ条件を AI と壁打ちしながら整理し、後続の `/idd-implement` で不明点（Goal A）により停止しない粒度へ落とし込みます。
 - **投稿前の完全プレビューと承認ゲート**: `gh issue create` の実行前に、対象リポジトリ・投稿アカウント・タイトル・ラベル／Assignee（任意）・本文のプレビューを提示し、ユーザーの明示的な許可を得てから投稿します。
@@ -32,6 +33,9 @@ GitHub の Issue 番号または Pull Request 番号を起点として、以下�
 ---
 
 ## 動作仕様（認証の切り替えルール）
+
+> [!NOTE]
+> 以下の Bot / ローカル認証の切り替えルールは **`idd-implement`** に適用されます。**`idd-issue`** は常にローカルの `gh` CLI でログイン中のユーザーとして直接 `gh issue create` を実行します（`（🤖AIによる投稿）` マーカーも付与しません）。
 
 | 条件 | 使用される認証主体 | コメント本文および Git コミット・プッシュの挙動 |
 | :--- | :--- | :--- |
@@ -95,11 +99,19 @@ git clone git@github.com:sawarame/idd-skills.git
 
 ### Antigravity 以外の AI エージェント / プロジェクト単位で利用する場合（`git subtree`）
 
-`skills/idd-implement` を `git subtree split` で切り出した専用ブランチ `idd-implement` を用意しています。これを使うことで、Google Antigravity 以外の AI コーディングエージェントでも対象リポジトリの `.agents/skills` 配下に配置して `idd-implement` スキルを利用できます。
+`skills/idd-issue` および `skills/idd-implement` をそれぞれ `git subtree split` で切り出した専用ブランチ（`idd-issue` / `idd-implement`）を用意しています。これを使うことで、Google Antigravity 以外の AI コーディングエージェントでも対象リポジトリの `.agents/skills` 配下に配置して各スキルを利用できます。
 
-利用したいリポジトリのルートディレクトリ（作業ツリーがクリーンな状態）で以下を実行してください。
+利用したいリポジトリのルートディレクトリ（作業ツリーがクリーンな状態）で、導入したいスキルのコマンドを実行してください。
 
 ```bash
+# idd-issue（対話的な要件整理・Issue 起票）
+git subtree add \
+  --prefix=.agents/skills/idd-issue \
+  https://github.com/sawarame/idd-skills.git \
+  idd-issue \
+  --squash
+
+# idd-implement（Issue 実装・PR レビュー対応の自律実行）
 git subtree add \
   --prefix=.agents/skills/idd-implement \
   https://github.com/sawarame/idd-skills.git \
@@ -110,13 +122,21 @@ git subtree add \
 SSH 経由で取得する場合は、リポジトリ URL を `git@github.com:sawarame/idd-skills.git` に置き換えて実行してください。
 
 > [!NOTE]
-> - **AI エージェントに応じた `--prefix` の調整**: 多くの AI エージェントはプロジェクトローカルのスキルを `.agents/skills/` から読み込みますが、利用するツールによっては `.agent/skills/` や `.claude/skills/` などを参照する場合があります。使用するツールに合わせて `--prefix`（例: `--prefix=.agent/skills/idd-implement`）を読み替えてください。
-> - **スクリプトのパス**: 同梱スクリプトは配置したスキルディレクトリ配下の `scripts/`（例: `.agents/skills/idd-implement/scripts/`）に含まれます。[動作確認](#動作確認) のコマンドを手動実行する際は、`~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` を配置先のパスに読み替えてください。
-> - **GitHub App 設定の共有**: `~/.config/github-app/.env` はホームディレクトリ配下に配置するため、どのリポジトリへ導入した場合も同様に Bot 認証が利用できます（未設定時はローカルの `gh` / `git` 認証へフォールバックします）。
+> - **AI エージェントに応じた `--prefix` の調整**: 多くの AI エージェントはプロジェクトローカルのスキルを `.agents/skills/` から読み込みますが、利用するツールによっては `.agent/skills/` や `.claude/skills/` などを参照する場合があります。使用するツールに合わせて `--prefix`（例: `--prefix=.agent/skills/idd-issue`、`--prefix=.agent/skills/idd-implement`）を読み替えてください。
+> - **スクリプトのパス（`idd-implement`）**: `idd-implement` の同梱スクリプトは配置したスキルディレクトリ配下の `scripts/`（例: `.agents/skills/idd-implement/scripts/`）に含まれます。[動作確認](#動作確認) のコマンドを手動実行する際は、`~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` を配置先のパスに読み替えてください。（`idd-issue` はローカルの `gh` CLI を直接利用するため同梱スクリプトはありません。）
+> - **GitHub App 設定の共有**: `~/.config/github-app/.env` はホームディレクトリ配下に配置するため、どのリポジトリへ導入した場合も `idd-implement` で同様に Bot 認証が利用できます（未設定時はローカルの `gh` / `git` 認証へフォールバックします）。
 
-導入後、スキルを最新版へ更新する場合は以下を実行します。
+導入後、各スキルを最新版へ更新する場合は以下を実行します。
 
 ```bash
+# idd-issue の更新
+git subtree pull \
+  --prefix=.agents/skills/idd-issue \
+  https://github.com/sawarame/idd-skills.git \
+  idd-issue \
+  --squash
+
+# idd-implement の更新
 git subtree pull \
   --prefix=.agents/skills/idd-implement \
   https://github.com/sawarame/idd-skills.git \
