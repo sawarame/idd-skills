@@ -11,16 +11,16 @@ An autonomous, non-interactive skill that starts from a GitHub Issue number or P
 - **New Issue Implementation Flow**: Reviewing requirements and open questions → posting a specification/technical requirements comment (or adding the `question` label and exiting after posting a clarification comment) → removing `question` if present & updating GitHub Project `Status` to `In Progress` immediately before implementation → implementing and verifying in a `git worktree` → creating a Pull Request → updating GitHub Project `Status` to `In Review` if available → returning to the original branch.
 - **PR Review Response Flow**: When invoked with a PR number (or an Issue number that already has an open PR with review feedback), inspects PR reviews, conversation comments, unresolved inline diff review threads, and linked Issues → posts clarification questions on the PR and exits if feedback is ambiguous → updates the linked Issue's Project `Status` to `In Progress` → checks out the existing PR branch in a `git worktree`, implements and verifies fixes → commits & pushes updates → replies to addressed inline review comments, posts a PR summary comment, and requests re-review → updates Project `Status` to `In Review` if available → cleans up the worktree and returns to the original branch.
 
-Using the bundled wrapper script [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs), the skill posts Issue/PR comments, inline review replies, label updates, and Pull Requests **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is configured and Bot authentication succeeds**, or falls back to **the locally authenticated GitHub user** when GitHub App configuration is absent or authentication fails (when posting comments or review replies as the local user, `（🤖AIによる投稿）` is automatically appended after the first heading—or prepended when no heading is present—to clearly indicate an AI-authored comment). For GitHub Projects (Projects v2) `Status` updates, [`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) uses the Bot token for Organization repositories (falling back to local `gh` authentication if unconfigured or Bot auth fails) and uses the locally authenticated `gh` user for personal (`User`) repositories (since GitHub App Installation Tokens cannot access user-owned Projects v2).
+Using the bundled wrapper scripts [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) and [`scripts/git-as-bot.mjs`](./skills/idd-implement/scripts/git-as-bot.mjs), the skill posts Issue/PR comments, inline review replies, label updates, Pull Requests, **and `git commit` / `git push` operations** **as a dedicated GitHub App (`<app-name>[bot]`) when `~/.config/github-app/.env` is configured and Bot authentication succeeds**, or falls back to **the locally authenticated GitHub / Git user** when GitHub App configuration is absent, authentication fails, or `Contents: Read and write` permission is missing for `git push` (when posting comments or review replies via `gh-as-bot.mjs` as the local user, `（🤖AIによる投稿）` is automatically appended after the first heading—or prepended when no heading is present—to clearly indicate an AI-authored comment). For GitHub Projects (Projects v2) `Status` updates, [`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) uses the Bot token for Organization repositories (falling back to local `gh` authentication if unconfigured or Bot auth fails) and uses the locally authenticated `gh` user for personal (`User`) repositories (since GitHub App Installation Tokens cannot access user-owned Projects v2).
 
 ---
 
 ## Behavior (Authentication Switching Rules)
 
-| Condition | Authentication Identity Used | Comment Body Formatting |
+| Condition | Authentication Identity Used | Comment Body & Git Commit/Push Behavior |
 | :--- | :--- | :--- |
-| `~/.config/github-app/.env` **exists and Bot authentication succeeds** | Installation Access Token of the GitHub App (`<app-name>[bot]`) specified in `.env` | Posted as-is (GitHub displays the `[bot]` badge) |
-| GitHub App configuration is missing, or **authentication fails** | Falls back with a warning to the user currently logged into the local `gh` CLI (`gh auth status`) | Automatically appends `（🤖AIによる投稿）` after the first heading |
+| `~/.config/github-app/.env` **exists and Bot authentication succeeds** | Installation Access Token of the GitHub App (`<app-name>[bot]`) specified in `.env` | Comments/PRs are posted as-is (GitHub displays the `[bot]` badge); `git commit` uses `<app-slug>[bot]` author/committer (`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`); `git push` authenticates via Bot token over HTTPS |
+| GitHub App configuration is missing, or **authentication/permission fails** | Falls back with a warning to the user currently logged into the local `gh` CLI (`gh auth status`) / local `git` config & credentials | Comments automatically append `（🤖AIによる投稿）` after the first heading; `git commit` / `git push` fall back to your local `git` author configuration and credentials |
 
 > [!NOTE]
 > **Fallback to Local User and AI Post Attribution**
@@ -90,7 +90,7 @@ If you want AI-generated Issue comments and Pull Requests to be separated from y
 4. Under **Permissions** → **Repository permissions**, configure the following permissions:
    - **Issues**: `Read and write` (required to view Issues, post comments, and manage labels such as `question`)
    - **Pull requests**: `Read and write` (required to create and update PRs)
-   - **Contents**: `Read and write` (required if `git push` is performed with a Bot token in the future; `Read-only` is sufficient if pushing with standard local `git` credentials)
+   - **Contents**: `Read and write` (required so `git-as-bot.mjs` can perform `git push` using the Bot token; if set to `Read-only`, `git-as-bot.mjs` logs a warning and falls back to your local `git` credentials for `git push`)
    - **Metadata**: Automatically set to `Read-only`.
    - *(If using an **Organization** with GitHub Projects v2)* Under **Permissions** → **Organization permissions**, also set **Projects** to `Read and write` (do not confuse this with Repository-level Projects, which applies only to Projects classic). After installing or updating permissions on the Organization, approve them via **Accept new permissions**.
 5. Under **Where can this GitHub App be installed?**, select **Only on this account**, then click **Create GitHub App**.
@@ -162,6 +162,9 @@ node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.
 # Temporarily pointing to a non-existent path displays the locally logged-in gh username
 GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
   node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs api /user --jq .login
+
+# Verify git-as-bot.mjs passes through local git commands cleanly
+node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs status --short
 ```
 
 ---
@@ -169,10 +172,10 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 ## Security Design and Operational Notes
 
 - **Keeping Private Keys and Tokens Out of AI Context**
-  `gh-as-bot.mjs` reads `.env` and `.pem` internally and passes the acquired Installation Access Token to the `gh` child process strictly in memory via the `GH_TOKEN` environment variable (it never caches tokens to disk or prints keys/tokens to stdout). [SKILL.md](./skills/idd-implement/SKILL.md) also prohibits AI agents from directly reading `.env` or `.pem` files.
-- **Authentication During `git push`**
-  Bot authentication applies to GitHub API operations performed via the `gh` CLI (viewing Issues, posting comments, creating PRs). `git push` runs using your normal local Git credentials (SSH / HTTPS).
-  *Note: Having the Bot create the PR also lets you review and approve the PR using your personal GitHub account.*
+  `gh-as-bot.mjs` and `git-as-bot.mjs` read `.env` and `.pem` internally and pass the acquired Installation Access Token strictly in memory—via the `GH_TOKEN` environment variable for `gh` and an in-memory `IDD_GIT_BOT_TOKEN` environment variable paired with a temporary `GIT_ASKPASS` script (without embedding tokens into CLI arguments, remote URLs, or `.git/config`) for `git`. They never cache tokens to disk or print keys/tokens to stdout. [SKILL.md](./skills/idd-implement/SKILL.md) also prohibits AI agents from directly reading `.env` or `.pem` files.
+- **Bot Identity and Authentication During `git commit` / `git push`**
+  When GitHub App configuration is present and valid, `git-as-bot.mjs` commits using the Bot's GitHub identity (`<app-slug>[bot]` / `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`) and pushes over HTTPS using the Bot's Installation Access Token (even if your local `origin` remote uses SSH, via temporary `-c` config overrides that leave `.git/config` untouched). If Bot configuration is missing, Bot authentication fails, or `git push` fails due to missing `Contents: Read and write` permission, `git-as-bot.mjs` logs a warning and falls back to your local `git` author settings and credentials.
+  *Note: Having the Bot create commits and the PR also lets you cleanly separate AI commits and review/approve the PR using your personal GitHub account.*
 
 ---
 
@@ -180,11 +183,11 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 
 - **`Failed to retrieve GitHub App installation information for repository owner/repo` (`HTTP 404`)**
   - The GitHub App is not installed on the target repository. Add the repository from **Install App** in your GitHub App settings.
-- **`Resource not accessible by integration` (`HTTP 403`)**
-  - The GitHub App may be missing `Issues: Read and write` or `Pull requests: Read and write` under **Repository permissions**. After updating permissions, you may need to approve the updated permissions on the installation page in GitHub (**Accept new permissions**).
-- **Comments or PRs are still posted under your personal account**
-  - Check that `~/.config/github-app/.env` has the exact path and filename, and check stderr for `[gh-as-bot] Warning:` messages indicating Bot authentication fell back to the local user.
-  - Check whether the agent called `gh` directly or used GitHub MCP tools instead of `gh-as-bot.mjs` ([SKILL.md](./skills/idd-implement/SKILL.md) specifies prioritizing `gh-as-bot.mjs`).
+- **`Resource not accessible by integration` (`HTTP 403`) or `git push` falling back to local credentials**
+  - The GitHub App may be missing `Issues: Read and write`, `Pull requests: Read and write`, or `Contents: Read and write` (needed for Bot `git push`) under **Repository permissions**. After updating permissions, you may need to approve the updated permissions on the installation page in GitHub (**Accept new permissions**).
+- **Comments, commits, or PRs are still created under your personal account**
+  - Check that `~/.config/github-app/.env` has the exact path and filename, and check stderr for `[gh-as-bot] Warning:` or `[git-as-bot] Warning:` messages indicating Bot authentication fell back to the local user.
+  - Check whether the agent called `gh` or `git` directly, or used GitHub MCP tools instead of `gh-as-bot.mjs` / `git-as-bot.mjs` ([SKILL.md](./skills/idd-implement/SKILL.md) specifies prioritizing both wrappers).
 - **GitHub Project `Status` is not updated to `In Progress` or `In Review`**
   - **Personal (`User`) repository**: GitHub App Installation Tokens cannot access user-owned Projects v2, so `update-project-status.mjs` uses your local `gh` CLI. Run `gh auth refresh -s project` if the `project` scope is missing.
   - **Organization repository**: Ensure the GitHub App has **Organization permissions → Projects: `Read and write`** enabled and approved (**Accept new permissions**) on the Organization installation.

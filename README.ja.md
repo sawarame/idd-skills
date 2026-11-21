@@ -11,16 +11,16 @@ GitHub の Issue 番号または Pull Request 番号を起点として、以下�
 - **新規 Issue 実装フロー**: 要件・不明点の確認 → 仕様・技術要件コメントの投稿（または確認コメントを投稿して `question` ラベルを付与し終了） → `question` ラベルの解除と GitHub Project `Status` の `In Progress` への更新（実装直前） → `git worktree` 上での実装とテスト・ビルド検証 → Pull Request の作成 → GitHub Project `Status` の `In Review` への更新（選択肢がある場合） → 元のブランチへの復帰
 - **PR レビュー対応フロー**: PR 番号（またはオープン中の PR を持つ Issue 番号）を指定すると、PR のレビュー・通常コメント・インラインの差分レビューコメント（未解決スレッド）および紐づく Issue を確認 → 不明点があれば PR へ確認コメントを投稿して終了 → 紐づく Issue の `Status` を `In Progress` に更新 → PR の既存ブランチを `git worktree` でチェックアウトして修正・テスト検証 → コミット＆プッシュ → インラインコメントへの返信・PR サマリーコメント投稿・再レビュー依頼 → `Status` を `In Review` に更新（選択肢がある場合） → 元のブランチへの復帰
 
-同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) により、**`~/.config/github-app/.env` が存在し Bot 認証に成功した場合は専用の GitHub App（`<app-name>[bot]`）として**、設定情報がない場合や認証に通らなかった場合は **ローカルでログイン中の GitHub ユーザーとして** Issue / PR コメントやレビュー返信・ラベル操作・PR 作成を行います（ローカルユーザーとしてコメント・レビュー返信を投稿する場合は、AI による投稿であることを明示するため、最初の見出しの後に `（🤖AIによる投稿）` が自動で記載されます；見出しがない本文では先頭に付与されます）。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し（未設定・認証失敗時はローカル認証へフォールバック）、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
+同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) および [`scripts/git-as-bot.mjs`](./skills/idd-implement/scripts/git-as-bot.mjs) により、**`~/.config/github-app/.env` が存在し Bot 認証に成功した場合は専用の GitHub App（`<app-name>[bot]`）として** Issue / PR コメント・レビュー返信・ラベル操作・PR 作成に加えて **`git commit` / `git push` も Bot として実行**し、設定情報がない場合や認証・権限に通らなかった場合は **ローカルで設定・ログイン中の GitHub / Git ユーザーへフォールバック** します（`gh-as-bot.mjs` でローカルユーザーとしてコメント・レビュー返信を投稿する場合は、AI による投稿であることを明示するため、最初の見出しの後に `（🤖AIによる投稿）` が自動で記載されます；見出しがない本文では先頭に付与されます）。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し（未設定・認証失敗時はローカル認証へフォールバック）、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
 
 ---
 
 ## 動作仕様（認証の切り替えルール）
 
-| 条件 | 使用される認証主体 | コメント本文への表記 |
+| 条件 | 使用される認証主体 | コメント本文および Git コミット・プッシュの挙動 |
 | :--- | :--- | :--- |
-| `~/.config/github-app/.env` が **存在し、Bot 認証に成功した** | `.env` で指定された GitHub App（`<app-name>[bot]`）の Installation Access Token | そのまま投稿（GitHub 上で `[bot]` バッジが表示） |
-| GitHub App の情報がない、または **認証に通らなかった** | 警告を出力した上でローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`） | 最初の見出しの後に `（🤖AIによる投稿）` を自動追記 |
+| `~/.config/github-app/.env` が **存在し、Bot 認証に成功した** | `.env` で指定された GitHub App（`<app-name>[bot]`）の Installation Access Token | コメント・PR はそのまま投稿（GitHub 上で `[bot]` バッジが表示）；`git commit` は `<app-slug>[bot]`（`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`）名義で作成；`git push` は Bot トークンで HTTPS 認証して実行 |
+| GitHub App の情報がない、または **認証・権限に通らなかった** | 警告を出力した上でローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`）およびローカルの `git` 設定・認証情報 | コメントは最初の見出しの後に `（🤖AIによる投稿）` を自動追記；`git commit` / `git push` はローカルの `git` 著者設定・認証情報へフォールバック |
 
 > [!NOTE]
 > **ローカルユーザーへのフォールバックと AI 投稿の明示**
@@ -90,7 +90,7 @@ AI による Issue コメントや Pull Request を個人アカウントから�
 4. **Permissions** → **Repository permissions** で以下の権限を設定します：
    - **Issues**: `Read and write`（Issue の閲覧、コメント投稿、`question` 等のラベル操作に必要）
    - **Pull requests**: `Read and write`（PR の作成・更新に必要）
-   - **Contents**: `Read and write`（将来 Bot トークンで `git push` を行う場合に必要。通常のローカル `git` 認証で push する場合は `Read-only` でも可）
+   - **Contents**: `Read and write`（`git-as-bot.mjs` で Bot トークンを使って `git push` を行う場合に必要。`Read-only` の場合は警告を出力した上でローカルの `git` 認証情報へフォールバックして push します）
    - **Metadata**: 自動的に `Read-only` になります。
    - *(**Organization** で GitHub Projects v2 を利用する場合)* **Permissions** → **Organization permissions** にある **Projects** も `Read and write` に設定してください（Repository permissions 側の Projects は旧 Projects (classic) 用であるため混同しないよう注意してください）。Organization へのインストールや権限変更後は、インストール設定画面で **Accept new permissions** を承認してください。
 5. **Where can this GitHub App be installed?** で **Only on this account** を選択し、**Create GitHub App** をクリックします。
@@ -162,6 +162,9 @@ node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.
 # 一時的に存在しないパスを指定すると、ローカルでログイン中の gh ユーザー名が表示される
 GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
   node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs api /user --jq .login
+
+# git-as-bot.mjs 経由の git コマンド動作確認
+node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs status --short
 ```
 
 ---
@@ -169,10 +172,10 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 ## セキュリティ設計と運用上の注意
 
 - **秘密鍵とトークンを AI コンテキストに露出させない設計**
-  `gh-as-bot.mjs` は `.env` と `.pem` を内部で読み込み、取得した Installation Access Token を `GH_TOKEN` 環境変数経由でインメモリのみから `gh` 子プロセスへ渡します（トークンのディスク保存や標準出力への表示は行いません）。[SKILL.md](./skills/idd-implement/SKILL.md) でも AI エージェントが `.env` や `.pem` を直接読み取ることを禁止しています。
-- **`git push` 時の認証**
-  Bot 認証は `gh` CLI 経由の GitHub API 操作（Issue 閲覧、コメント投稿、PR 作成など）に適用されます。`git push` は通常のローカル Git 認証情報（SSH / HTTPS）で実行されます。
-  *補足: PR を Bot 名義で作成することで、ご自身の個人 GitHub アカウントからその PR をレビュー・Approve できるようになります。*
+  `gh-as-bot.mjs` と `git-as-bot.mjs` は `.env` と `.pem` を内部で読み込み、取得した Installation Access Token をインメモリのみから子プロセスへ渡します（`gh` には `GH_TOKEN` 環境変数、`git` には一時 `GIT_ASKPASS` スクリプトと `IDD_GIT_BOT_TOKEN` 環境変数を使用し、CLI 引数・リモート URL・`.git/config` やディスクへのトークン保存、標準出力への表示は行いません）。[SKILL.md](./skills/idd-implement/SKILL.md) でも AI エージェントが `.env` や `.pem` を直接読み取ることを禁止しています。
+- **`git commit` / `git push` 時の Bot 名義と認証**
+  GitHub App が設定され認証に成功した場合、`git-as-bot.mjs` は Bot の GitHub アカウント情報（`<app-slug>[bot]` / `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`）でコミットを作成し、Bot の Installation Access Token を使って HTTPS 経由で `git push` を実行します（ローカルの `origin` リモートが SSH の場合も、`.git/config` を書き換えずに一時的な `-c` オプションで HTTPS 認証に切り替えます）。Bot 設定がない場合・認証失敗時・`Contents: Read and write` 権限不足時は、警告を出力して通常のローカル `git` 著者設定・認証情報へフォールバックします。
+  *補足: コミットや PR を Bot 名義で作成することで、AI による変更を分離し、ご自身の個人 GitHub アカウントから PR をレビュー・Approve できるようになります。*
 
 ---
 
@@ -180,11 +183,11 @@ GITHUB_APP_ENV_FILE=/tmp/nonexistent-gh-bot.env \
 
 - **`Failed to retrieve GitHub App installation information for repository owner/repo`（`HTTP 404`）**
   - 対象の GitHub リポジトリに GitHub App がインストールされていません。GitHub App 設定の **Install App** から対象リポジトリを追加してください。
-- **`Resource not accessible by integration`（`HTTP 403`）**
-  - GitHub App の **Repository permissions** で `Issues: Read and write` または `Pull requests: Read and write` が不足している可能性があります。権限変更後は GitHub 上のインストール画面で変更の承認（**Accept new permissions**）が必要な場合があります。
-- **コメントや PR が個人アカウントのまま投稿される**
-  - `~/.config/github-app/.env` のパスとファイル名が正確か、また実行時の標準エラー出力に `[gh-as-bot] Warning:`（Bot 認証失敗によるフォールバック警告）が出ていないか確認してください。
-  - エージェントが `gh-as-bot.mjs` を経由せず `gh` を直接呼び出したり、GitHub MCP ツールを使っていないか確認してください（[SKILL.md](./skills/idd-implement/SKILL.md) では `gh-as-bot.mjs` の優先使用を指定しています）。
+- **`Resource not accessible by integration`（`HTTP 403`）または `git push` がローカル認証へフォールバックする**
+  - GitHub App の **Repository permissions** で `Issues: Read and write`、`Pull requests: Read and write`、または `Contents: Read and write`（Bot での `git push` に必要）が不足している可能性があります。権限変更後は GitHub 上のインストール画面で変更の承認（**Accept new permissions**）が必要な場合があります。
+- **コメント・コミット・PR が個人アカウントのまま作成される**
+  - `~/.config/github-app/.env` のパスとファイル名が正確か、また実行時の標準エラー出力に `[gh-as-bot] Warning:` や `[git-as-bot] Warning:`（Bot 認証失敗によるフォールバック警告）が出ていないか確認してください。
+  - エージェントが `gh-as-bot.mjs` / `git-as-bot.mjs` を経由せず `gh` や `git` を直接呼び出したり、GitHub MCP ツールを使っていないか確認してください（[SKILL.md](./skills/idd-implement/SKILL.md) では両ラッパーの優先使用を指定しています）。
 - **GitHub Project の `Status` が `In Progress` や `In Review` に更新されない**
   - **個人（`User`）リポジトリの場合**: GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため、`update-project-status.mjs` はローカルの `gh` CLI を使用します。`project` スコープが不足している場合は `gh auth refresh -s project` を実行してください。
   - **Organization リポジトリの場合**: GitHub App に **Organization permissions → Projects: `Read and write`** が設定され、Organization 側で承認（**Accept new permissions**）されているか確認してください。

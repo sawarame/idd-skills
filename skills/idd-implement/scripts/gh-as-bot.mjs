@@ -136,9 +136,10 @@ function parseOwnerAndRepo(value) {
 /**
  * Resolves the target `owner/repo` from CLI arguments or the current Git repository.
  * @param args - CLI arguments passed to `gh`
+ * @param cwd - Git リモート探索の基準となる作業ディレクトリ
  * @returns Resolved `{ owner, repo }`, or `null` if not identifiable
  */
-function resolveTargetRepository(args) {
+function resolveTargetRepository(args = [], cwd = process.cwd()) {
   // 1. Prioritize `-R` / `--repo` flags from CLI arguments
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -153,7 +154,8 @@ function resolveTargetRepository(args) {
 
   // 2. Read from the current directory's `origin` remote URL
   const remoteOrigin = spawnSync('git', ['remote', 'get-url', 'origin'], {
-    encoding: 'utf8'
+    encoding: 'utf8',
+    cwd
   });
   if (remoteOrigin.status === 0 && remoteOrigin.stdout) {
     const parsed = parseOwnerAndRepo(remoteOrigin.stdout);
@@ -161,7 +163,7 @@ function resolveTargetRepository(args) {
   }
 
   // 3. Fall back to the first available remote URL other than `origin`
-  const remotes = spawnSync('git', ['remote'], { encoding: 'utf8' });
+  const remotes = spawnSync('git', ['remote'], { encoding: 'utf8', cwd });
   if (remotes.status === 0 && remotes.stdout) {
     const firstRemote = remotes.stdout
       .split(/\r?\n/)
@@ -169,7 +171,8 @@ function resolveTargetRepository(args) {
       .find(Boolean);
     if (firstRemote) {
       const remoteUrl = spawnSync('git', ['remote', 'get-url', firstRemote], {
-        encoding: 'utf8'
+        encoding: 'utf8',
+        cwd
       });
       if (remoteUrl.status === 0 && remoteUrl.stdout) {
         const parsed = parseOwnerAndRepo(remoteUrl.stdout);
@@ -185,18 +188,22 @@ function resolveTargetRepository(args) {
  * Sends a request to the GitHub REST API and returns the JSON response.
  * @param url - Request URL
  * @param method - HTTP method
- * @param jwt - JWT for GitHub App authentication
+ * @param bearerToken - 認証用トークン（JWT または Installation Access Token、省略時は無認証）
  * @returns Parsed JSON response object
  */
-async function callGitHubAppApi(url, method, jwt) {
+async function callGitHubAppApi(url, method, bearerToken) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'idd-skills-gh-as-bot',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+  if (bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
+  }
+
   const response = await fetch(url, {
     method,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${jwt}`,
-      'User-Agent': 'idd-skills-gh-as-bot',
-      'X-GitHub-Api-Version': '2022-11-28'
-    }
+    headers
   });
 
   if (!response.ok) {
@@ -214,9 +221,16 @@ async function callGitHubAppApi(url, method, jwt) {
  * @param params.privateKeyPath - Path to the private key `.pem` file
  * @param params.installationId - Fixed Installation ID (auto-detected from repository when omitted)
  * @param params.args - CLI argument list passed to `gh`
+ * @param params.cwd - Git リモート解決時の作業ディレクトリ
  * @returns Acquired Installation Access Token
  */
-async function fetchInstallationToken({ appId, privateKeyPath, installationId, args }) {
+async function fetchInstallationToken({
+  appId,
+  privateKeyPath,
+  installationId,
+  args = [],
+  cwd = process.cwd()
+}) {
   if (!fs.existsSync(privateKeyPath)) {
     throw new Error(`Private key file not found: ${privateKeyPath}`);
   }
@@ -226,7 +240,7 @@ async function fetchInstallationToken({ appId, privateKeyPath, installationId, a
 
   let resolvedInstallationId = installationId;
   if (!resolvedInstallationId) {
-    const targetRepo = resolveTargetRepository(args);
+    const targetRepo = resolveTargetRepository(args, cwd);
     if (!targetRepo) {
       throw new Error(
         'Could not identify the target repository (owner/repo). Run inside a repository or specify `-R owner/repo`.'
@@ -255,6 +269,47 @@ async function fetchInstallationToken({ appId, privateKeyPath, installationId, a
   }
 
   return tokenData.token;
+}
+
+/**
+ * GitHub App の情報から Git コミット用の Bot ユーザー名・noreply メールアドレスを取得する関数
+ * @param params - App 認証パラメータ
+ * @param params.appId - GitHub App ID
+ * @param params.privateKeyPath - 秘密鍵 `.pem` ファイルのパス
+ * @param params.botToken - 取得済みの Installation Access Token（省略時は無認証で `/users` を照会）
+ * @returns Bot の識別情報（`name`, `email`, `slug`, `userId`）
+ */
+async function fetchBotIdentity({ appId, privateKeyPath, botToken } = {}) {
+  if (!fs.existsSync(privateKeyPath)) {
+    throw new Error(`Private key file not found: ${privateKeyPath}`);
+  }
+
+  const privateKeyPem = fs.readFileSync(privateKeyPath, 'utf8');
+  const jwt = createAppJwt(appId, privateKeyPem);
+
+  const appInfo = await callGitHubAppApi('https://api.github.com/app', 'GET', jwt);
+  if (!appInfo?.slug) {
+    throw new Error('GitHub App metadata response did not include a slug.');
+  }
+
+  const expectedLogin = `${appInfo.slug}[bot]`;
+  const userInfo = await callGitHubAppApi(
+    `https://api.github.com/users/${encodeURIComponent(expectedLogin)}`,
+    'GET',
+    botToken
+  );
+
+  if (!userInfo?.id) {
+    throw new Error(`Could not resolve GitHub user ID for ${expectedLogin}.`);
+  }
+
+  const login = userInfo.login || expectedLogin;
+  return {
+    slug: appInfo.slug,
+    userId: userInfo.id,
+    name: login,
+    email: `${userInfo.id}+${login}@users.noreply.github.com`
+  };
 }
 
 /**
@@ -649,7 +704,16 @@ export function prepareCommentArgsForLocalUser(args) {
   };
 }
 
-export { AI_POST_MARKER, fetchInstallationToken, loadBotConfig, resolveTargetRepository };
+export {
+  AI_POST_MARKER,
+  callGitHubAppApi,
+  createAppJwt,
+  fetchBotIdentity,
+  fetchInstallationToken,
+  loadBotConfig,
+  parseOwnerAndRepo,
+  resolveTargetRepository
+};
 
 /**
  * 現在のスクリプトが CLI のエントリポイントとして直接実行されているかを判定する関数
