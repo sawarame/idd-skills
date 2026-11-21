@@ -4,6 +4,22 @@
 
 **Google Antigravity** 対応の Issue 駆動開発（Issue-Driven Development: IDD）プラグインです。
 
+用途に応じて連携する 2 つのスキルを提供します：
+- **`idd-issue`**: やりたいことを AI と対話しながらブレスト・要件整理し、**ローカルでログイン中の `gh` ユーザーとして** GitHub Issue を起票します。
+- **`idd-implement`**: 既存の Issue 番号または Pull Request 番号を起点に、要件確認・実装・テスト検証・PR 作成／レビュー対応までを `git worktree` 上で自律実行します。
+
+## `idd-issue` スキル概要
+
+アイデアや課題のメモから、`idd-implement` ですぐに実装に着手できる粒度の GitHub Issue を対話的に作成するスキルです。
+
+- **読み取り専用でのリポジトリ調査**: コードベースやプロジェクト規約（`CONTRIBUTING.md` / `AGENTS.md` / `README*` 等）、`.github/ISSUE_TEMPLATE/`、既存のオープン Issue（重複・関連確認）、利用可能なラベルを読み取り専用で参照します（ファイルやブランチの変更は行いません）。
+- **対話型ブレスト・要件整理**: 背景・目的、要件・仕様、対象外（Out of Scope）、技術的考慮事項、受け入れ条件を AI と壁打ちしながら整理し、後続の `/idd-implement` で不明点（Goal A）により停止しない粒度へ落とし込みます。
+- **投稿前の完全プレビューと承認ゲート**: `gh issue create` の実行前に、対象リポジトリ・投稿アカウント・タイトル・ラベル／Assignee（任意）・本文のプレビューを提示し、ユーザーの明示的な許可を得てから投稿します。
+- **ローカルログインユーザーとして投稿**: `gh-as-bot.mjs` や GitHub App Bot は使用せず、ローカルの `gh` CLI でログイン中のユーザーアカウントで直接 `gh issue create` を実行します（ユーザー自身の起票であるため `（🤖AIによる投稿）` マーカーは付与しません）。なお、GitHub Projects（Projects v2）への登録・ステータス設定は対象外です。
+- **`idd-implement` への導線**: 起票完了後は Issue 番号と URL を報告し、実装へ進むための `/idd-implement <番号>` を案内します。
+
+---
+
 ## `idd-implement` スキル概要
 
 GitHub の Issue 番号または Pull Request 番号を起点として、以下のフローを確認待ちなしで自律的に完結させるスキルです。

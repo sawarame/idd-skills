@@ -4,6 +4,22 @@
 
 An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
 
+It provides two complementary skills:
+- **`idd-issue`**: Interactively brainstorms ideas with AI against your repository context and posts a structured GitHub Issue **as your locally authenticated `gh` user**.
+- **`idd-implement`**: Starts from an existing GitHub Issue or Pull Request number and autonomously inspects requirements/reviews, implements and verifies changes in an isolated `git worktree`, and opens or updates Pull Requests.
+
+## `idd-issue` Skill Documentation
+
+An interactive skill for turning rough ideas or tasks into well-structured GitHub Issues ready for `idd-implement`:
+
+- **Read-Only Repository Exploration**: Inspects project conventions (`CONTRIBUTING.md`, `AGENTS.md`, `README*`, etc.), `.github/ISSUE_TEMPLATE/`, relevant codebase files, existing open Issues (to avoid duplicates), and repository labels without modifying any files or branches.
+- **Interactive Brainstorming**: Refines purpose, functional specifications, out-of-scope boundaries, technical considerations, and acceptance criteria through focused dialogue so downstream implementation does not stall on ambiguities.
+- **Mandatory Preview & Confirmation**: Presents the complete draft (target repository, local `gh` account, title, optional labels/assignees, and Markdown body) and waits for your explicit approval before posting.
+- **Posted as Your Local `gh` User**: Creates the Issue directly via `gh issue create` under your locally logged-in `gh` CLI account (never via `gh-as-bot.mjs` or the GitHub App Bot, and **without** appending `（🤖AIによる投稿）`). GitHub Projects (Projects v2) registration and status transitions are out of scope for `idd-issue`.
+- **Smooth Handoff to `idd-implement`**: After creating the Issue, reports the Issue number and URL and guides you to run `/idd-implement <issue-number>` when ready to implement.
+
+---
+
 ## `idd-implement` Skill Documentation
 
 An autonomous, non-interactive skill that starts from a GitHub Issue number or Pull Request number and executes the full workflow end-to-end:
