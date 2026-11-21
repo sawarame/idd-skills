@@ -19,14 +19,18 @@ Starting from a GitHub Issue number or Pull Request number, this skill **runs au
 
 Before starting work, verify the environment and project structure.
 
-1. **GitHub Issue / PR Operations (Prioritize the Bot Authentication Wrapper)**:
+1. **GitHub Issue / PR Operations and Git Commit / Push (Prioritize the Bot Authentication Wrappers)**:
    - To inspect Issues, post Issue comments, and create PRs, run the **`gh` CLI** through the bundled wrapper script `scripts/gh-as-bot.mjs` (located alongside this `SKILL.md`, typically `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs`):
      ```bash
      node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs <gh-subcommand-and-args...>
      ```
-   - **If `~/.config/github-app/.env` exists and Bot authentication succeeds**, this wrapper generates an Installation Access Token from the configured GitHub App ID and `.pem` private key and runs `gh` **as the Bot (`GH_TOKEN`)**. **If GitHub App information is missing or Bot authentication fails**, it logs a warning and falls back to executing `gh` as the locally authenticated `gh` user.
+   - To create commits (`git commit`) and push branches (`git push`), run **`git`** through the bundled wrapper script `scripts/git-as-bot.mjs`:
+     ```bash
+     node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs <git-subcommand-and-args...>
+     ```
+   - **If `~/.config/github-app/.env` exists and Bot authentication succeeds**, `gh-as-bot.mjs` acquires an Installation Access Token from the configured GitHub App ID and `.pem` private key and runs `gh` **as the Bot (`GH_TOKEN`)**, while `git-as-bot.mjs` resolves the Bot's commit identity (`<app-slug>[bot]` / `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`) for `git commit` and authenticates `git push` over HTTPS using the Bot's Installation Access Token via an in-memory `GIT_ASKPASS` helper. **If GitHub App information is missing, Bot authentication fails, or Bot push lacks `Contents: Read and write` permission**, the wrappers log a warning and fall back to executing as the locally configured/authenticated `gh` or `git` user.
    - **AI Attribution on Local User Fallback**: Whenever a comment is posted as the locally authenticated user (because GitHub App configuration is absent or Bot authentication fails), the comment must include `（🤖AIによる投稿）` immediately after its first heading so readers can identify it as an AI-authored comment (e.g., `### Specifications & Functional Requirements（🤖AIによる投稿）`). `gh-as-bot.mjs` automatically appends `（🤖AIによる投稿）` after the first heading of `issue comment` / `pr comment` / `pr review` bodies and `api` comment/reply `body` fields when falling back to the local user (and omits it when posting as the Bot). Therefore, always structure comments with a Markdown heading (as in the templates below) when appropriate and let `gh-as-bot.mjs` handle the attribution automatically.
-   - **Security Prohibition**: Never directly read the contents of `~/.config/github-app/.env` or `.pem` private key files as an agent (all authentication handling must remain encapsulated inside `gh-as-bot.mjs`).
+   - **Security Prohibition**: Never directly read the contents of `~/.config/github-app/.env` or `.pem` private key files as an agent (all authentication handling must remain encapsulated inside `gh-as-bot.mjs` and `git-as-bot.mjs`).
    - **GitHub MCP Tools**: GitHub MCP tools do not read `~/.config/github-app/.env` and would post under the personal account; therefore, avoid them by default and use `gh-as-bot.mjs` instead (only fall back to GitHub MCP tools in environments where `gh` CLI is unavailable—and in that case, manually append `（🤖AIによる投稿）` right after the first heading of any posted comment).
    - As a pre-check, confirm that the current repository is linked to the target GitHub repository, and if Bot authentication is unconfigured or unavailable, confirm local authentication via `gh auth status`.
 2. **GitHub Projects (Projects v2) Status Helper**:
@@ -98,7 +102,7 @@ Follow these steps when responding to review feedback on an existing open PR (Go
    ```bash
    node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/update-project-status.mjs <issue-number> --status "In Progress"
    ```
-3. Run `git fetch origin` to get the latest remote commits on the PR branch (`origin/<headRefName>`) and base branch (`origin/<baseRefName>`).
+3. Run `git fetch origin` (or via `git-as-bot.mjs fetch origin`) to get the latest remote commits on the PR branch (`origin/<headRefName>`) and base branch (`origin/<baseRefName>`).
 4. Create an isolated `git worktree` at `../.worktrees/<repo>-pr-<pr-number>` (or `.worktrees/` if `.gitignore`d) checked out on the PR's existing branch:
    - If `<headRefName>` is **not** currently checked out in another worktree or the original repository root:
      - If local branch `<headRefName>` exists: `git worktree add <worktree-path> <headRefName>` (and fast-forward to `origin/<headRefName>` with `git merge --ff-only origin/<headRefName>` if behind).
@@ -114,8 +118,11 @@ Follow these steps when responding to review feedback on an existing open PR (Go
    - If an unexpected ambiguity is discovered mid-fix, post a clarification comment on the PR, clean up the worktree, restore the original branch, exit, and report.
 
 #### R4. Commit, Push, Reply to PR Reviews, Update Status, and Restore Branch
-1. Confirm all tests and build checks pass, then stage and commit your changes in the worktree following the project's commit conventions.
-2. Push to the existing PR branch (`git push origin <headRefName>`, or `git push origin HEAD:<headRefName>` if detached; never force-push unless explicitly instructed).
+1. Confirm all tests and build checks pass, then stage and commit your changes in the worktree via `git-as-bot.mjs` following the project's commit conventions:
+   ```bash
+   node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs commit -m "<commit-message>"
+   ```
+2. Push to the existing PR branch via `git-as-bot.mjs` (`git-as-bot.mjs push origin <headRefName>`, or `git-as-bot.mjs push origin HEAD:<headRefName>` if detached; never force-push unless explicitly instructed).
 3. **Reply to Review Comments and Post a Summary on the PR (Without Asking Confirmation)**:
    - For each addressed inline review comment (`<comment-id>` from `pulls/<pr-number>/comments`), post a concise reply explaining the fix and referencing the commit SHA:
      ```bash
@@ -214,8 +221,14 @@ To avoid affecting any ongoing work in the original working directory (such as u
 ### 6. Commit, Push, Create a PR (Pull Request), and Restore the Original Branch
 1. **Pre-check**: Confirm that all unit tests and build checks (including lint, type checks, etc.) defined in the project have passed. If any check has not been run or is failing, do not create a PR—return to Step 5 and resolve it.
 2. Confirm that the worktree is on the working branch (not the default branch).
-3. Stage the modified implementation and test files, and create a commit following the project's commit conventions (or Conventional Commits).
-4. Push the working branch to the remote repository (e.g., `git push -u origin <branch-name>`).
+3. Stage the modified implementation and test files, and create a commit via `git-as-bot.mjs` following the project's commit conventions (or Conventional Commits):
+   ```bash
+   node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs commit -m "<commit-message>"
+   ```
+4. Push the working branch to the remote repository via `git-as-bot.mjs`:
+   ```bash
+   node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/git-as-bot.mjs push -u origin "<branch-name>"
+   ```
 5. **Without asking the user for prior permission**, run `gh pr create` via `gh-as-bot.mjs` to create a regular (non-draft) PR (explicitly pass the base branch from Step 4 to `--base`).
    - Example: `node ~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/gh-as-bot.mjs pr create --base "<base-branch>" --head "<working-branch>" --title "<title>" --body "<body>"`
    - If the project has a PR template such as `.github/pull_request_template.md`, follow its structure.
@@ -290,6 +303,6 @@ Addressed the review feedback on this PR.
 - **No Spec Kit; Pre-Implementation Spec & Tech Requirements Comment Required (for New Issues)**: Do not use Spec Kit in this skill. When implementing a new Issue (Goal B), never jump straight into writing code—always organize the specifications and technical requirements and post them as an Issue comment before starting implementation.
 - **Work Isolation via `git worktree` and Restoration of Original Branch**: Always perform implementation, review fixes, and verification inside a dedicated `git worktree` so the original working directory (any ongoing work or uncommitted changes) is completely untouched. After creating or updating the PR (or upon early exit), always clean up the temporary worktree and return to the original working directory and original branch.
 - **Passing Unit Tests and Build Checks Required**: Whenever the project defines unit tests or build checks (including lint, type checks, etc.), you must run and pass all of them before creating a PR or pushing PR review fixes. Creating a PR or pushing review fixes while tests or builds are failing or unverified is prohibited.
-- **Automatic Posting of Comments, Review Replies, Labels, Project Status Updates, and PR Operations**: Post Issue/PR comments, inline PR review replies, toggle the `question` label (add on Goal A, remove on Goal B/C), update the GitHub Project `Status` to `In Progress` **immediately before starting implementation or review fixes (never deferring to PR creation)**, create the PR or push review fixes after verification, and update the GitHub Project `Status` to `In Review` after PR creation/review response if that option exists (non-blocking on warnings) without requesting prior permission from the user, and include the results (posted content, label/Project status outcomes or warnings, and PR URL) in the final report. Write clearly, accurately, and respectfully so third-party readers can easily understand the intent.
+- **Automatic Posting of Comments, Review Replies, Labels, Project Status Updates, Bot Git Operations, and PR Operations**: Post Issue/PR comments, inline PR review replies, toggle the `question` label (add on Goal A, remove on Goal B/C), update the GitHub Project `Status` to `In Progress` **immediately before starting implementation or review fixes (never deferring to PR creation)**, commit and push changes via `git-as-bot.mjs` (using Bot identity and token when configured, or falling back to local git credentials on warning), create the PR or push review fixes after verification via `gh-as-bot.mjs` / `git-as-bot.mjs`, and update the GitHub Project `Status` to `In Review` after PR creation/review response if that option exists (non-blocking on warnings) without requesting prior permission from the user, and include the results (posted content, label/Project status outcomes or warnings, and PR URL) in the final report. Write clearly, accurately, and respectfully so third-party readers can easily understand the intent.
 - **No Guessing Ambiguous Specifications or Review Feedback**: Do not guess or invent specifications when design choices, requirements, or review comments are unclear. Register open questions as a comment on the target Issue or PR, report it, and exit.
 - **No Destructive Git Operations**: Committing to the working branch, pushing the working branch, and creating/updating a PR are permitted, but never push directly to default branches (`main` / `master`, etc.), force-push (`git push --force`), merge PRs, or directly close Issues unless explicitly instructed by the user.
