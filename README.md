@@ -57,6 +57,8 @@ To enable automatic status tracking during `idd-implement`, set up an open **Git
 
 ## Installation
 
+### Google Antigravity (Global Plugin)
+
 By cloning this repository into the `~/.gemini/config/plugins` directory, it is automatically recognized and enabled as a global **Antigravity** plugin.
 
 ```bash
@@ -73,6 +75,37 @@ If you prefer to clone via SSH, run the following commands:
 ```bash
 cd ~/.gemini/config/plugins
 git clone git@github.com:sawarame/idd-skills.git
+```
+
+### Other AI Agents / Project-Local Setup (`git subtree`)
+
+A dedicated `idd-implement` branch (split from `skills/idd-implement` via `git subtree split`) is available so that AI coding agents other than Google Antigravity can also use `idd-implement` directly from a target repository's `.agents/skills` directory.
+
+Run the following command at the root of your target repository (requires a clean working tree):
+
+```bash
+git subtree add \
+  --prefix=.agents/skills/idd-implement \
+  https://github.com/sawarame/idd-skills.git \
+  idd-implement \
+  --squash
+```
+
+If you prefer SSH, replace the repository URL with `git@github.com:sawarame/idd-skills.git`.
+
+> [!NOTE]
+> - **Adjusting `--prefix` for your AI agent**: Many agents read project-local skills from `.agents/skills/`, while some tools use `.agent/skills/` or `.claude/skills/`. Adjust `--prefix` (for example, `--prefix=.agent/skills/idd-implement`) to match your AI agent's skill directory.
+> - **Script paths**: The bundled helper scripts are located under the installed skill's `scripts/` directory (e.g., `.agents/skills/idd-implement/scripts/`). When running the commands in [Verification](#verification) manually, replace `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` with your installed path.
+> - **GitHub App configuration**: `~/.config/github-app/.env` is stored in your home directory, so Bot authentication works the same way across repositories. (Without it, the skill falls back to your local `gh` / `git` credentials.)
+
+To pull future updates to `idd-implement` into your repository:
+
+```bash
+git subtree pull \
+  --prefix=.agents/skills/idd-implement \
+  https://github.com/sawarame/idd-skills.git \
+  idd-implement \
+  --squash
 ```
 
 ---

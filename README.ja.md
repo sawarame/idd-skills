@@ -57,6 +57,8 @@ GitHub の Issue 番号または Pull Request 番号を起点として、以下�
 
 ## インストール方法
 
+### Google Antigravity の場合（グローバルプラグイン）
+
 このリポジトリを `~/.gemini/config/plugins` 配下にクローンすることで、グローバルの **Antigravity** プラグインとして自動認識・有効化されます。
 
 ```bash
@@ -73,6 +75,37 @@ SSH 経由でクローンする場合は以下を実行してください。
 ```bash
 cd ~/.gemini/config/plugins
 git clone git@github.com:sawarame/idd-skills.git
+```
+
+### Antigravity 以外の AI エージェント / プロジェクト単位で利用する場合（`git subtree`）
+
+`skills/idd-implement` を `git subtree split` で切り出した専用ブランチ `idd-implement` を用意しています。これを使うことで、Google Antigravity 以外の AI コーディングエージェントでも対象リポジトリの `.agents/skills` 配下に配置して `idd-implement` スキルを利用できます。
+
+利用したいリポジトリのルートディレクトリ（作業ツリーがクリーンな状態）で以下を実行してください。
+
+```bash
+git subtree add \
+  --prefix=.agents/skills/idd-implement \
+  https://github.com/sawarame/idd-skills.git \
+  idd-implement \
+  --squash
+```
+
+SSH 経由で取得する場合は、リポジトリ URL を `git@github.com:sawarame/idd-skills.git` に置き換えて実行してください。
+
+> [!NOTE]
+> - **AI エージェントに応じた `--prefix` の調整**: 多くの AI エージェントはプロジェクトローカルのスキルを `.agents/skills/` から読み込みますが、利用するツールによっては `.agent/skills/` や `.claude/skills/` などを参照する場合があります。使用するツールに合わせて `--prefix`（例: `--prefix=.agent/skills/idd-implement`）を読み替えてください。
+> - **スクリプトのパス**: 同梱スクリプトは配置したスキルディレクトリ配下の `scripts/`（例: `.agents/skills/idd-implement/scripts/`）に含まれます。[動作確認](#動作確認) のコマンドを手動実行する際は、`~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` を配置先のパスに読み替えてください。
+> - **GitHub App 設定の共有**: `~/.config/github-app/.env` はホームディレクトリ配下に配置するため、どのリポジトリへ導入した場合も同様に Bot 認証が利用できます（未設定時はローカルの `gh` / `git` 認証へフォールバックします）。
+
+導入後、スキルを最新版へ更新する場合は以下を実行します。
+
+```bash
+git subtree pull \
+  --prefix=.agents/skills/idd-implement \
+  https://github.com/sawarame/idd-skills.git \
+  idd-implement \
+  --squash
 ```
 
 ---
