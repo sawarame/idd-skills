@@ -9,12 +9,16 @@ import { fileURLToPath } from 'node:url';
 
 import {
   AI_POST_MARKER,
+  AI_POST_MARKERS,
   annotateAiCommentBody,
+  detectCommentLanguage,
   fetchBotIdentity,
   fetchInstallationToken,
+  getAiPostMarker,
   isCommentApiCall,
   isCommentSubcommand,
   parseOwnerAndRepo,
+  prepareCommentArgsForLocalUser,
   resolveTargetRepository
 } from '../skills/idd-implement/scripts/gh-as-bot.mjs';
 import {
@@ -312,11 +316,73 @@ test('resolveTargetRepository & resolveGitRemoteContext: -C 指定のリポジ�
   });
 });
 
-test('gh-as-bot.mjs: AI 投稿マーク付与・コメント判定の回帰テスト', () => {
+test('gh-as-bot.mjs: コメント本文の言語を判定しコードブロック内の日本語で誤判定しない', () => {
+  assert.equal(detectCommentLanguage('### 仕様・機能要件\n実装します。'), 'ja');
+  assert.equal(detectCommentLanguage('### 修正完了\n対応済'), 'ja');
+  assert.equal(detectCommentLanguage('### Specifications & Functional Requirements\nDetails'), 'en');
+  assert.equal(
+    detectCommentLanguage(
+      '### Summary\nUpdated `（🤖AIによる投稿）` handling.\n\n```js\n// 日本語コメント\nconst label = "テスト";\n```\n'
+    ),
+    'en'
+  );
+  assert.equal(getAiPostMarker('日本語コメント'), AI_POST_MARKERS.ja);
+  assert.equal(getAiPostMarker('English comment'), AI_POST_MARKERS.en);
+});
+
+test('gh-as-bot.mjs: 言語別 AI 投稿マーク付与・重複防止・コメント判定のテスト', () => {
+  // 日本語コメント（ATX 見出し / 見出しなし / 重複防止）
   assert.equal(
     annotateAiCommentBody('### 見出し\n本文'),
     `### 見出し${AI_POST_MARKER}\n本文`
   );
+  assert.equal(
+    annotateAiCommentBody('本文のみのコメント'),
+    `${AI_POST_MARKERS.ja}\n\n本文のみのコメント`
+  );
+  assert.equal(
+    annotateAiCommentBody(`### 見出し${AI_POST_MARKERS.ja}\n本文`),
+    `### 見出し${AI_POST_MARKERS.ja}\n本文`
+  );
+
+  // 英語コメント（ATX 見出し / Setext 見出し / 見出しなし / 重複防止）
+  assert.equal(
+    annotateAiCommentBody('### Specifications & Functional Requirements\nDetails'),
+    `### Specifications & Functional Requirements ${AI_POST_MARKERS.en}\nDetails`
+  );
+  assert.equal(
+    annotateAiCommentBody('Summary\n---\nFixed the parser bug.'),
+    `Summary ${AI_POST_MARKERS.en}\n---\nFixed the parser bug.`
+  );
+  assert.equal(
+    annotateAiCommentBody('Fixed in abc1234.'),
+    `${AI_POST_MARKERS.en}\n\nFixed in abc1234.`
+  );
+  assert.equal(
+    annotateAiCommentBody(`### Summary ${AI_POST_MARKERS.en}\nDetails`),
+    `### Summary ${AI_POST_MARKERS.en}\nDetails`
+  );
+
+  // ローカルフォールバック時の引数変換で英語マーカーが付与されること
+  const prepared = prepareCommentArgsForLocalUser([
+    'issue',
+    'comment',
+    '4',
+    '--body',
+    '### Summary\nDone.'
+  ]);
+  try {
+    assert.deepEqual(prepared.args, [
+      'issue',
+      'comment',
+      '4',
+      '--body',
+      `### Summary ${AI_POST_MARKERS.en}\nDone.`
+    ]);
+  } finally {
+    prepared.cleanup();
+  }
+
   assert.equal(isCommentSubcommand(['issue', 'comment', '4', '-b', 'hi']), true);
   assert.equal(
     isCommentApiCall(['api', 'repos/sawarame/idd-skills/pulls/1/comments/2/replies', '-f', 'body=ok']),

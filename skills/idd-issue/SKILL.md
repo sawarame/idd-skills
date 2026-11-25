@@ -14,7 +14,7 @@ Starting from a user's rough idea, problem statement, or feature request, this s
 1. **Post Strictly as the Locally Authenticated `gh` User (Never as Bot)**:
    - Always inspect Issues, labels, and repository metadata—and create the final Issue—by invoking the local **`gh` CLI** directly (e.g., `gh auth status`, `gh issue list`, `gh label list`, `gh issue create`).
    - **Never** use `gh-as-bot.mjs`, `git-as-bot.mjs`, or GitHub App Bot credentials in this skill.
-   - **Never** append `（🤖AIによる投稿）` to the Issue title or body (the Issue is authored interactively with the user and explicitly approved by the user before posting under their own account).
+   - **Never** append an AI post marker (such as `(🤖 Posted by AI)` or `（🤖AIによる投稿）`) to the Issue title or body (the Issue is authored interactively with the user and explicitly approved by the user before posting under their own account).
 2. **Interactive Clarification & Mandatory Confirmation**:
    - Unlike `idd-implement` (which runs non-interactively), `idd-issue` is explicitly conversational.
    - Never run `gh issue create` without first showing the full drafted Issue preview (target repository, posting account, title, labels/assignees if any, and full Markdown body) and receiving explicit user approval.
@@ -93,7 +93,7 @@ Collaborate with the user through focused, structured back-and-forth dialogue to
    EOF
    ```
    - Include `--label "<label1>,<label2>"` or `--assignee "<login>"` only if confirmed by the user in Step 3.
-   - Do **not** invoke `gh-as-bot.mjs`, do **not** add `（🤖AIによる投稿）`, and do **not** call `update-project-status.mjs`.
+   - Do **not** invoke `gh-as-bot.mjs`, do **not** add an AI post marker (such as `(🤖 Posted by AI)` or `（🤖AIによる投稿）`), and do **not** call `update-project-status.mjs`.
 
 ### 5. Report Result & Suggest Next Step
 1. Share the created Issue number, clickable GitHub URL, posting user account, and any applied labels/assignees.
@@ -129,7 +129,7 @@ Use this structure when `.github/ISSUE_TEMPLATE/` does not define a specific tem
 
 ## Strict Rules
 
-- **Local `gh` User Only (No Bot / No AI Marker)**: Always execute Issue creation via `gh issue create` under the locally logged-in `gh` user. Never call `gh-as-bot.mjs` or append `（🤖AIによる投稿）`.
+- **Local `gh` User Only (No Bot / No AI Marker)**: Always execute Issue creation via `gh issue create` under the locally logged-in `gh` user. Never call `gh-as-bot.mjs` or append an AI post marker (such as `(🤖 Posted by AI)` or `（🤖AIによる投稿）`).
 - **Mandatory Preview & Explicit Approval**: Never execute `gh issue create` before displaying the full preview (target repository, posting account, title, metadata, and body) and receiving explicit confirmation from the user.
 - **No Unfounded Assumptions**: Ground technical suggestions in files and Issues you actually inspected in the repository. Do not fabricate file paths, labels, or existing behaviors.
 - **Read-Only Workspace**: Do not edit repository files, create branches, or create commits during `idd-issue`.

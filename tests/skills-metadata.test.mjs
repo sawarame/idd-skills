@@ -62,6 +62,7 @@ test('skills/idd-issue/SKILL.md: フロントマターと Issue #3 の必須要�
   assert.match(content, /gh issue create/);
   assert.match(content, /gh auth status/);
   assert.match(content, /Never[\s\S]*gh-as-bot\.mjs|never[\s\S]*gh-as-bot\.mjs/i);
+  assert.match(content, /\(🤖 Posted by AI\)/);
   assert.match(content, /（🤖AIによる投稿）/);
 
   // 投稿前プレビュー・テンプレート・idd-implement 連携が定義されていること
@@ -71,21 +72,25 @@ test('skills/idd-issue/SKILL.md: フロントマターと Issue #3 の必須要�
   assert.match(content, /idd-implement/);
 });
 
-test('skills/idd-implement/SKILL.md: 既存スキルのフロントマターが維持されていること', () => {
+test('skills/idd-implement/SKILL.md: 既存スキルのフロントマターと言語別 AI 投稿マーカーの記載が維持されていること', () => {
   const skillPath = path.join(REPO_ROOT, 'skills', 'idd-implement', 'SKILL.md');
   const content = fs.readFileSync(skillPath, 'utf8');
   const frontmatter = parseSkillFrontmatter(content);
 
   assert.equal(frontmatter.name, 'idd-implement');
   assert.ok(frontmatter.description && frontmatter.description.length > 20);
+  assert.match(content, /\(🤖 Posted by AI\)/);
+  assert.match(content, /（🤖AIによる投稿）/);
 });
 
-test('README.md / README.ja.md: idd-issue と idd-implement の両スキルが記載されていること', () => {
+test('README.md / README.ja.md: idd-issue と idd-implement の両スキルおよび各言語の AI 投稿マーカーが記載されていること', () => {
   const readmeEn = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
   const readmeJa = fs.readFileSync(path.join(REPO_ROOT, 'README.ja.md'), 'utf8');
 
   assert.match(readmeEn, /## `idd-issue` Skill Documentation/);
   assert.match(readmeEn, /gh issue create/);
+  assert.match(readmeEn, /\(🤖 Posted by AI\)/);
   assert.match(readmeJa, /## `idd-issue` スキル概要/);
   assert.match(readmeJa, /gh issue create/);
+  assert.match(readmeJa, /（🤖AIによる投稿）/);
 });

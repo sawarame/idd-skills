@@ -16,7 +16,7 @@
 - **読み取り専用でのリポジトリ調査**: コードベースやプロジェクト規約（`CONTRIBUTING.md` / `AGENTS.md` / `README*` 等）、`.github/ISSUE_TEMPLATE/`、既存のオープン Issue（重複・関連確認）、利用可能なラベルを読み取り専用で参照します（ファイルやブランチの変更は行いません）。
 - **対話型ブレスト・要件整理**: 背景・目的、要件・仕様、対象外（Out of Scope）、技術的考慮事項、受け入れ条件を AI と壁打ちしながら整理し、後続の `/idd-implement` で不明点（Goal A）により停止しない粒度へ落とし込みます。
 - **投稿前の完全プレビューと承認ゲート**: `gh issue create` の実行前に、対象リポジトリ・投稿アカウント・タイトル・ラベル／Assignee（任意）・本文のプレビューを提示し、ユーザーの明示的な許可を得てから投稿します。
-- **ローカルログインユーザーとして投稿**: `gh-as-bot.mjs` や GitHub App Bot は使用せず、ローカルの `gh` CLI でログイン中のユーザーアカウントで直接 `gh issue create` を実行します（ユーザー自身の起票であるため `（🤖AIによる投稿）` マーカーは付与しません）。なお、GitHub Projects（Projects v2）への登録・ステータス設定は対象外です。
+- **ローカルログインユーザーとして投稿**: `gh-as-bot.mjs` や GitHub App Bot は使用せず、ローカルの `gh` CLI でログイン中のユーザーアカウントで直接 `gh issue create` を実行します（ユーザー自身の起票であるため `（🤖AIによる投稿）` などの AI 投稿マーカーは付与しません）。なお、GitHub Projects（Projects v2）への登録・ステータス設定は対象外です。
 - **`idd-implement` への導線**: 起票完了後は Issue 番号と URL を報告し、実装へ進むための `/idd-implement <番号>` を案内します。
 
 ---
@@ -28,23 +28,23 @@ GitHub の Issue 番号または Pull Request 番号を起点として、以下�
 - **新規 Issue 実装フロー**: 要件・不明点の確認 → 仕様・技術要件コメントの投稿（または確認コメントを投稿して `question` ラベルを付与し終了） → `question` ラベルの解除と GitHub Project `Status` の `In Progress` への更新（実装直前） → `git worktree` 上での実装とテスト・ビルド検証 → Pull Request の作成 → GitHub Project `Status` の `In Review` への更新（選択肢がある場合） → 元のブランチへの復帰
 - **PR レビュー対応フロー**: PR 番号（またはオープン中の PR を持つ Issue 番号）を指定すると、PR のレビュー・通常コメント・インラインの差分レビューコメント（未解決スレッド）および紐づく Issue を確認 → 不明点があれば PR へ確認コメントを投稿して終了 → 紐づく Issue の `Status` を `In Progress` に更新 → PR の既存ブランチを `git worktree` でチェックアウトして修正・テスト検証 → コミット＆プッシュ → インラインコメントへの返信・PR サマリーコメント投稿・再レビュー依頼 → `Status` を `In Review` に更新（選択肢がある場合） → 元のブランチへの復帰
 
-同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) および [`scripts/git-as-bot.mjs`](./skills/idd-implement/scripts/git-as-bot.mjs) により、**`~/.config/github-app/.env` が存在し Bot 認証に成功した場合は専用の GitHub App（`<app-name>[bot]`）として** Issue / PR コメント・レビュー返信・ラベル操作・PR 作成に加えて **`git commit` / `git push` も Bot として実行**し、設定情報がない場合や認証・権限に通らなかった場合は **ローカルで設定・ログイン中の GitHub / Git ユーザーへフォールバック** します（`gh-as-bot.mjs` でローカルユーザーとしてコメント・レビュー返信を投稿する場合は、AI による投稿であることを明示するため、最初の見出しの後に `（🤖AIによる投稿）` が自動で記載されます；見出しがない本文では先頭に付与されます）。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し（未設定・認証失敗時はローカル認証へフォールバック）、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
+同梱のスクリプト [`scripts/gh-as-bot.mjs`](./skills/idd-implement/scripts/gh-as-bot.mjs) および [`scripts/git-as-bot.mjs`](./skills/idd-implement/scripts/git-as-bot.mjs) により、**`~/.config/github-app/.env` が存在し Bot 認証に成功した場合は専用の GitHub App（`<app-name>[bot]`）として** Issue / PR コメント・レビュー返信・ラベル操作・PR 作成に加えて **`git commit` / `git push` も Bot として実行**し、設定情報がない場合や認証・権限に通らなかった場合は **ローカルで設定・ログイン中の GitHub / Git ユーザーへフォールバック** します（`gh-as-bot.mjs` でローカルユーザーとしてコメント・レビュー返信を投稿する場合は、AI による投稿であることを明示するため、コメント本文の言語に応じた AI 投稿マーカー—日本語では `（🤖AIによる投稿）`、英語などでは `(🤖 Posted by AI)`—が最初の見出しの後に自動で記載されます；見出しがない本文では先頭に付与されます）。GitHub Projects（Projects v2）の `Status` 更新については、[`scripts/update-project-status.mjs`](./skills/idd-implement/scripts/update-project-status.mjs) が Organization リポジトリでは Bot トークンを使用し（未設定・認証失敗時はローカル認証へフォールバック）、個人（`User`）リポジトリではローカルで認証済みの `gh` CLI を使用します（GitHub App の Installation Access Token では個人所有の Projects v2 にアクセスできないため）。
 
 ---
 
 ## 動作仕様（認証の切り替えルール）
 
 > [!NOTE]
-> 以下の Bot / ローカル認証の切り替えルールは **`idd-implement`** に適用されます。**`idd-issue`** は常にローカルの `gh` CLI でログイン中のユーザーとして直接 `gh issue create` を実行します（`（🤖AIによる投稿）` マーカーも付与しません）。
+> 以下の Bot / ローカル認証の切り替えルールは **`idd-implement`** に適用されます。**`idd-issue`** は常にローカルの `gh` CLI でログイン中のユーザーとして直接 `gh issue create` を実行します（`（🤖AIによる投稿）` などの AI 投稿マーカーも付与しません）。
 
 | 条件 | 使用される認証主体 | コメント本文および Git コミット・プッシュの挙動 |
 | :--- | :--- | :--- |
 | `~/.config/github-app/.env` が **存在し、Bot 認証に成功した** | `.env` で指定された GitHub App（`<app-name>[bot]`）の Installation Access Token | コメント・PR はそのまま投稿（GitHub 上で `[bot]` バッジが表示）；`git commit` は `<app-slug>[bot]`（`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`）名義で作成；`git push` は Bot トークンで HTTPS 認証して実行 |
-| GitHub App の情報がない、または **認証・権限に通らなかった** | 警告を出力した上でローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`）およびローカルの `git` 設定・認証情報 | コメントは最初の見出しの後に `（🤖AIによる投稿）` を自動追記；`git commit` / `git push` はローカルの `git` 著者設定・認証情報へフォールバック |
+| GitHub App の情報がない、または **認証・権限に通らなかった** | 警告を出力した上でローカル環境の `gh` CLI でログイン中のユーザー（`gh auth status`）およびローカルの `git` 設定・認証情報 | コメントは本文の言語に応じた AI 投稿マーカー（日本語では `（🤖AIによる投稿）`、英語などでは `(🤖 Posted by AI)`）を最初の見出しの後に自動追記；`git commit` / `git push` はローカルの `git` 著者設定・認証情報へフォールバック |
 
 > [!NOTE]
 > **ローカルユーザーへのフォールバックと AI 投稿の明示**
-> `~/.config/github-app/.env` が存在しない場合に加えて、設定値の不足や `.pem` ファイルの欠落、対象リポジトリへの未インストール、API 認証エラーなどで GitHub App の認証が通らなかった場合は、警告を出力してローカルでログイン中の `gh` ユーザーへフォールバックします。その際、`gh-as-bot.mjs` は `issue comment` / `pr comment` / `pr review` およびレビュー返信 API 呼び出しの本文にある最初の見出しの直後に「`（🤖AIによる投稿）`」を自動付与します（例: `### 仕様・機能要件（🤖AIによる投稿）`）。見出しが含まれない本文の場合は先頭に付与し、すでに記載済みの場合は重複付与しません。
+> `~/.config/github-app/.env` が存在しない場合に加えて、設定値の不足や `.pem` ファイルの欠落、対象リポジトリへの未インストール、API 認証エラーなどで GitHub App の認証が通らなかった場合は、警告を出力してローカルでログイン中の `gh` ユーザーへフォールバックします。その際、`gh-as-bot.mjs` はコメント本文の言語を自動判定し、`issue comment` / `pr comment` / `pr review` およびレビュー返信 API 呼び出しの本文にある最初の見出しの直後に言語別の AI 投稿マーカーを自動付与します（日本語の例: `### 仕様・機能要件（🤖AIによる投稿）`、英語の例: `### Specifications & Functional Requirements (🤖 Posted by AI)`）。見出しが含まれない本文の場合は先頭に付与し、すでに記載済みの場合は重複付与しません。
 
 ---
 

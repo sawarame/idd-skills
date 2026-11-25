@@ -402,10 +402,79 @@ function runGhCommand(args, botToken) {
   return typeof result.status === 'number' ? result.status : 1;
 }
 
-const AI_POST_MARKER = '（🤖AIによる投稿）';
+const AI_POST_MARKERS = Object.freeze({
+  ja: '（🤖AIによる投稿）',
+  en: '(🤖 Posted by AI)'
+});
+
+// 後方互換性のために維持する日本語 AI 投稿マーク定数
+const AI_POST_MARKER = AI_POST_MARKERS.ja;
 
 /**
- * コメント本文の最初の見出しの直後に AI 投稿マークを付与する関数
+ * コメント本文から使用されている言語（日本語または英語）を判定する関数
+ * フェンスコードブロックおよびインラインコード内の文字列は判定対象から除外する
+ * @param body - 判定対象のコメント本文
+ * @returns 判定した言語コード（`'ja'` または `'en'`）
+ */
+export function detectCommentLanguage(body) {
+  if (typeof body !== 'string' || body.length === 0) {
+    return 'en';
+  }
+
+  const lines = body.split(/\r?\n/);
+  const proseLines = [];
+  let activeFenceChar = '';
+  let activeFenceLength = 0;
+
+  for (const line of lines) {
+    if (activeFenceChar) {
+      const closeMatch = line.match(/^\s{0,3}(`{3,}|~{3,})\s*$/);
+      if (
+        closeMatch &&
+        closeMatch[1][0] === activeFenceChar &&
+        closeMatch[1].length >= activeFenceLength
+      ) {
+        activeFenceChar = '';
+        activeFenceLength = 0;
+      }
+      continue;
+    }
+
+    const openMatch = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (openMatch) {
+      const fence = openMatch[1];
+      const info = openMatch[2];
+      if (!(fence[0] === '`' && info.includes('`'))) {
+        activeFenceChar = fence[0];
+        activeFenceLength = fence.length;
+        continue;
+      }
+    }
+
+    // インラインコード内の文字列を除外し、自然言語部分のみを判定対象にする
+    proseLines.push(line.replace(/(`+)(.*?)\1/g, ''));
+  }
+
+  const prose = proseLines.join('\n');
+  // ひらがな・カタカナ・漢字が含まれていれば日本語、それ以外は英語と判定する
+  return /[\u3040-\u309F\u30A0-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uFF65-\uFF9F]/.test(
+    prose
+  )
+    ? 'ja'
+    : 'en';
+}
+
+/**
+ * コメント本文の言語に応じた AI 投稿マーク文字列を返す関数
+ * @param body - コメント本文
+ * @returns 言語に応じた AI 投稿マーク
+ */
+export function getAiPostMarker(body) {
+  return AI_POST_MARKERS[detectCommentLanguage(body)];
+}
+
+/**
+ * コメント本文の最初の見出しの直後に、本文の言語に応じた AI 投稿マークを付与する関数
  * @param body - 元のコメント本文
  * @returns AI 投稿マーク付与後のコメント本文
  */
@@ -415,9 +484,14 @@ export function annotateAiCommentBody(body) {
   }
 
   // すでに AI 投稿マークが含まれている場合は重複付与しない
-  if (body.includes(AI_POST_MARKER)) {
+  if (Object.values(AI_POST_MARKERS).some(marker => body.includes(marker))) {
     return body;
   }
+
+  const lang = detectCommentLanguage(body);
+  const marker = AI_POST_MARKERS[lang];
+  // 日本語は全角括弧のためスペースなし、英語は半角括弧のため前に半角スペースを入れる
+  const headingSuffix = lang === 'ja' ? marker : ` ${marker}`;
 
   const lineBreak = body.includes('\r\n') ? '\r\n' : '\n';
   const lines = body.split(/\r?\n/);
@@ -457,7 +531,7 @@ export function annotateAiCommentBody(body) {
     // ATX 見出し（# 〜 ######）を検出して見出しテキスト直後にマークを付与する
     const atxMatch = line.match(/^(\s{0,3}#{1,6}[ \t]+.*?\S)([ \t]+#+)?([ \t]*)$/);
     if (atxMatch) {
-      lines[i] = `${atxMatch[1]}${AI_POST_MARKER}${atxMatch[2] || ''}${atxMatch[3] || ''}`;
+      lines[i] = `${atxMatch[1]}${headingSuffix}${atxMatch[2] || ''}${atxMatch[3] || ''}`;
       return lines.join(lineBreak);
     }
 
@@ -468,13 +542,13 @@ export function annotateAiCommentBody(body) {
       !/^\s{0,3}(?:>|#{1,6}[ \t]|[-*+][ \t]|\d+[.)][ \t]|---+\s*$|===+\s*$)/.test(line) &&
       /^\s{0,3}(?:=+|-+)[ \t]*$/.test(lines[i + 1])
     ) {
-      lines[i] = `${line.replace(/[ \t]+$/, '')}${AI_POST_MARKER}`;
+      lines[i] = `${line.replace(/[ \t]+$/, '')}${headingSuffix}`;
       return lines.join(lineBreak);
     }
   }
 
   // 見出しが存在しない場合は先頭に AI 投稿マークを補う
-  return `${AI_POST_MARKER}${lineBreak}${lineBreak}${body}`;
+  return `${marker}${lineBreak}${lineBreak}${body}`;
 }
 
 /**
@@ -706,6 +780,7 @@ export function prepareCommentArgsForLocalUser(args) {
 
 export {
   AI_POST_MARKER,
+  AI_POST_MARKERS,
   callGitHubAppApi,
   createAppJwt,
   fetchBotIdentity,
