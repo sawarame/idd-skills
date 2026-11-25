@@ -10,7 +10,7 @@
 
 ## `idd-issue` スキル概要
 
-アイデアや課題のメモから、`idd-implement` ですぐに実装に着手できる粒度の GitHub Issue を対話的に作成するスキル（[`SKILL.md`](./skills/idd-issue/SKILL.md)）です。
+アイデアや課題のメモから、`idd-implement` ですぐに実装に着手できる粒度の GitHub Issue を対話的に作成するスキル（[使い方・プロンプト例](./skills/idd-issue/README.ja.md) / [`SKILL.md`](./skills/idd-issue/SKILL.md)）です。
 
 - **全体フロー**: 作りたいもの・課題の初期入力 → 読み取り専用でのリポジトリ・既存 Issue 調査 → 対話型ブレストによる要件の具体化 → 構造化 Issue ドラフトの作成 → 投稿前の完全プレビュー＆明示的承認 → `gh issue create` による起票 → `/idd-implement <番号>` への導線案内
 - **読み取り専用でのリポジトリ調査**: コードベースやプロジェクト規約（`CONTRIBUTING.md` / `AGENTS.md` / `README*` 等）、`.github/ISSUE_TEMPLATE/`、既存のオープン Issue（重複・関連確認）、利用可能なラベルを読み取り専用で参照します（ファイルやブランチの変更は行いません）。
@@ -23,7 +23,7 @@
 
 ## `idd-implement` スキル概要
 
-GitHub の Issue 番号または Pull Request 番号を起点として、以下のフローを確認待ちなしで自律的に完結させるスキルです。
+GitHub の Issue 番号または Pull Request 番号を起点として、以下のフローを確認待ちなしで自律的に完結させるスキル（[使い方・プロンプト例](./skills/idd-implement/README.ja.md) / [`SKILL.md`](./skills/idd-implement/SKILL.md)）です。
 
 - **新規 Issue 実装フロー**: 要件・不明点の確認 → 仕様・技術要件コメントの投稿（または確認コメントを投稿して `question` ラベルを付与し終了） → `question` ラベルの解除と GitHub Project `Status` の `In Progress` への更新（実装直前） → `git worktree` 上での実装とテスト・ビルド検証 → Pull Request の作成 → GitHub Project `Status` の `In Review` への更新（選択肢がある場合） → 元のブランチへの復帰
 - **PR レビュー対応フロー**: PR 番号（またはオープン中の PR を持つ Issue 番号）を指定すると、PR のレビュー・通常コメント・インラインの差分レビューコメント（未解決スレッド）および紐づく Issue を確認 → 不明点があれば PR へ確認コメントを投稿して終了 → 紐づく Issue の `Status` を `In Progress` に更新 → PR の既存ブランチを `git worktree` でチェックアウトして修正・テスト検証 → コミット＆プッシュ → インラインコメントへの返信・PR サマリーコメント投稿・再レビュー依頼 → `Status` を `In Review` に更新（選択肢がある場合） → 元のブランチへの復帰

@@ -10,7 +10,7 @@ It provides two complementary skills:
 
 ## `idd-issue` Skill Documentation
 
-An interactive skill ([`SKILL.md`](./skills/idd-issue/SKILL.md)) for turning rough ideas or tasks into well-structured GitHub Issues ready for `idd-implement`:
+An interactive skill ([Usage & Prompt Examples](./skills/idd-issue/README.md) | [`SKILL.md`](./skills/idd-issue/SKILL.md)) for turning rough ideas or tasks into well-structured GitHub Issues ready for `idd-implement`:
 
 - **End-to-End Flow**: Initial idea or task input → read-only repository & existing Issue inspection → interactive brainstorming to resolve ambiguities → structured Issue drafting → mandatory full preview & explicit user confirmation → creating the Issue via `gh issue create` → suggesting `/idd-implement <issue-number>`.
 - **Read-Only Repository Exploration**: Inspects project conventions (`CONTRIBUTING.md`, `AGENTS.md`, `README*`, etc.), `.github/ISSUE_TEMPLATE/`, relevant codebase files, existing open Issues (to avoid duplicates), and repository labels without modifying any files or branches.
@@ -23,7 +23,7 @@ An interactive skill ([`SKILL.md`](./skills/idd-issue/SKILL.md)) for turning rou
 
 ## `idd-implement` Skill Documentation
 
-An autonomous, non-interactive skill that starts from a GitHub Issue number or Pull Request number and executes the full workflow end-to-end:
+An autonomous, non-interactive skill ([Usage & Prompt Examples](./skills/idd-implement/README.md) | [`SKILL.md`](./skills/idd-implement/SKILL.md)) that starts from a GitHub Issue number or Pull Request number and executes the full workflow end-to-end:
 
 - **New Issue Implementation Flow**: Reviewing requirements and open questions → posting a specification/technical requirements comment (or adding the `question` label and exiting after posting a clarification comment) → removing `question` if present & updating GitHub Project `Status` to `In Progress` immediately before implementation → implementing and verifying in a `git worktree` → creating a Pull Request → updating GitHub Project `Status` to `In Review` if available → returning to the original branch.
 - **PR Review Response Flow**: When invoked with a PR number (or an Issue number that already has an open PR with review feedback), inspects PR reviews, conversation comments, unresolved inline diff review threads, and linked Issues → posts clarification questions on the PR and exits if feedback is ambiguous → updates the linked Issue's Project `Status` to `In Progress` → checks out the existing PR branch in a `git worktree`, implements and verifies fixes → commits & pushes updates → replies to addressed inline review comments, posts a PR summary comment, and requests re-review → updates Project `Status` to `In Review` if available → cleans up the worktree and returns to the original branch.

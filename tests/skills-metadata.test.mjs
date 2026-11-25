@@ -90,7 +90,48 @@ test('README.md / README.ja.md: idd-issue と idd-implement の両スキルお�
   assert.match(readmeEn, /## `idd-issue` Skill Documentation/);
   assert.match(readmeEn, /gh issue create/);
   assert.match(readmeEn, /\(🤖 Posted by AI\)/);
+  assert.match(readmeEn, /\.\/skills\/idd-issue\/README\.md/);
+  assert.match(readmeEn, /\.\/skills\/idd-implement\/README\.md/);
+
   assert.match(readmeJa, /## `idd-issue` スキル概要/);
   assert.match(readmeJa, /gh issue create/);
   assert.match(readmeJa, /（🤖AIによる投稿）/);
+  assert.match(readmeJa, /\.\/skills\/idd-issue\/README\.ja\.md/);
+  assert.match(readmeJa, /\.\/skills\/idd-implement\/README\.ja\.md/);
+});
+
+test('各スキル配下の README.md / README.ja.md: 言語切替リンク・プロンプト例・SKILL.md への参照が含まれること', () => {
+  const skillDocs = [
+    {
+      skillName: 'idd-issue',
+      command: '/idd-issue',
+      enPath: path.join(REPO_ROOT, 'skills', 'idd-issue', 'README.md'),
+      jaPath: path.join(REPO_ROOT, 'skills', 'idd-issue', 'README.ja.md')
+    },
+    {
+      skillName: 'idd-implement',
+      command: '/idd-implement',
+      enPath: path.join(REPO_ROOT, 'skills', 'idd-implement', 'README.md'),
+      jaPath: path.join(REPO_ROOT, 'skills', 'idd-implement', 'README.ja.md')
+    }
+  ];
+
+  for (const doc of skillDocs) {
+    assert.ok(fs.existsSync(doc.enPath), `${doc.skillName}/README.md が存在すること`);
+    assert.ok(fs.existsSync(doc.jaPath), `${doc.skillName}/README.ja.md が存在すること`);
+
+    const enContent = fs.readFileSync(doc.enPath, 'utf8');
+    const jaContent = fs.readFileSync(doc.jaPath, 'utf8');
+
+    for (const content of [enContent, jaContent]) {
+      assert.match(content, /\[English\]\(\.\/README\.md\) \| \[日本語\]\(\.\/README\.ja\.md\)/);
+      assert.match(content, new RegExp(doc.command));
+      assert.match(content, /\.\/SKILL\.md/);
+      // git subtree 単体導入時のリンク切れを防ぐため、ルート README への相対参照を含めないこと
+      assert.doesNotMatch(content, /\.\.\/\.\.\/README/);
+    }
+
+    assert.match(enContent, /## Usage & Prompt Examples/);
+    assert.match(jaContent, /## 使い方・プロンプト例/);
+  }
 });
