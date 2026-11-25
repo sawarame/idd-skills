@@ -4,8 +4,9 @@
 
 **Google Antigravity** 対応の Issue 駆動開発（Issue-Driven Development: IDD）プラグインです。
 
-用途に応じて連携する 2 つのスキルを提供します：
+用途に応じて連携する 3 つのスキルを提供します：
 - **`idd-issue`**: やりたいことを AI と対話しながらブレスト・要件整理し、**ローカルでログイン中の `gh` ユーザーとして** GitHub Issue を起票します。
+- **`idd-clarify`**: 既存の Issue 番号を指定して Issue 本文・既存コメント・コードベースを読み込み、仕様として不足・曖昧な点を洗い出して AI と対話形式で仕様を固め、**ローカルでログイン中の `gh` ユーザーとして** Issue コメントに追記します。
 - **`idd-implement`**: 既存の Issue 番号または Pull Request 番号を起点に、要件確認・実装・テスト検証・PR 作成／レビュー対応までを `git worktree` 上で自律実行します。
 
 ## `idd-issue` スキル概要
@@ -18,6 +19,19 @@
 - **投稿前の完全プレビューと承認ゲート**: `gh issue create` の実行前に、対象リポジトリ・投稿アカウント・タイトル・ラベル／Assignee（任意）・本文のプレビューを提示し、ユーザーの明示的な許可を得てから投稿します。
 - **ローカルログインユーザーとして投稿**: `gh-as-bot.mjs` や GitHub App Bot は使用せず、ローカルの `gh` CLI でログイン中のユーザーアカウントで直接 `gh issue create` を実行します（ユーザー自身の起票であるため `（🤖AIによる投稿）` などの AI 投稿マーカーは付与しません）。なお、GitHub Projects（Projects v2）への登録・ステータス設定は対象外です。
 - **`idd-implement` への導線**: 起票完了後は Issue 番号と URL を報告し、実装へ進むための `/idd-implement <番号>` を案内します。
+
+---
+
+## `idd-clarify` スキル概要
+
+既存の GitHub Issue 番号を指定して Issue 本文・既存コメント・コードベースを調査し、仕様として不足・曖昧な点をユーザーと対話形式で固めた上で Issue コメントに追記するスキル（[使い方・プロンプト例](./skills/idd-clarify/README.ja.md) / [`SKILL.md`](./skills/idd-clarify/SKILL.md)）です。
+
+- **全体フロー**: 対象 Issue 番号／URL の指定 → 読み取り専用での Issue・既存コメント・リポジトリ調査 → 仕様の不足・曖昧点の洗い出し → 対話形式での仕様確認・確定 → 投稿前の完全プレビュー＆明示的承認 → `gh issue comment` によるコメント投稿（`question` ラベル付与時は承認の上で解除） → `/idd-implement <番号>` への導線案内
+- **読み取り専用での Issue・コードベース調査**: `gh issue view <番号> --comments` で Issue 本文と既存コメント（レビュアーや前回の `/idd-implement` Goal A で残された未回答の質問を含む）を取得し、プロジェクト規約や関連ソースコードを読み取り専用で確認します（ファイルやブランチの変更は行いません）。
+- **対話形式での仕様確認**: すでに明確な内容を整理した上で、対象範囲（Out of Scope）、機能仕様・入出力、エッジケース・エラーハンドリング、技術的な設計判断、受け入れ条件などの不足点を、コードベースを踏まえた選択肢・推奨案とともにユーザーと確認して確定します。
+- **投稿前の完全プレビューと承認ゲート**: `gh issue comment` の実行前に、対象リポジトリ・対象 Issue・投稿アカウント・`question` ラベル解除の有無（付与時）・コメント本文のプレビューを提示し、ユーザーの明示的な許可を得てから投稿します。
+- **ローカルログインユーザーとしてコメント投稿（本文は保持）**: 元の Issue 本文は上書きせず、`gh-as-bot.mjs` や GitHub App Bot を使わずにローカルの `gh` CLI でログイン中のユーザーアカウントで直接 `gh issue comment` を実行します（ユーザー自身が確認・承認して投稿するため `（🤖AIによる投稿）` などの AI 投稿マーカーは付与しません）。なお、GitHub Projects（Projects v2）への登録・ステータス設定は対象外です。
+- **`idd-implement` への導線**: コメント投稿後はコメント／Issue の URL を報告し、自律実装へ進むための `/idd-implement <番号>` を案内します。
 
 ---
 
@@ -35,7 +49,7 @@ GitHub の Issue 番号または Pull Request 番号を起点として、以下�
 ## 動作仕様（認証の切り替えルール）
 
 > [!NOTE]
-> 以下の Bot / ローカル認証の切り替えルールは **`idd-implement`** に適用されます。**`idd-issue`** は常にローカルの `gh` CLI でログイン中のユーザーとして直接 `gh issue create` を実行します（`（🤖AIによる投稿）` などの AI 投稿マーカーも付与しません）。
+> 以下の Bot / ローカル認証の切り替えルールは **`idd-implement`** に適用されます。**`idd-issue`**（`gh issue create`）および **`idd-clarify`**（`gh issue comment` / 任意の `gh issue edit`）は常にローカルの `gh` CLI でログイン中のユーザーとして直接実行します（`（🤖AIによる投稿）` などの AI 投稿マーカーも付与しません）。
 
 | 条件 | 使用される認証主体 | コメント本文および Git コミット・プッシュの挙動 |
 | :--- | :--- | :--- |
@@ -99,7 +113,7 @@ git clone git@github.com:sawarame/idd-skills.git
 
 ### Antigravity 以外の AI エージェント / プロジェクト単位で利用する場合（`git subtree`）
 
-`skills/idd-issue` および `skills/idd-implement` をそれぞれ `git subtree split` で切り出した専用ブランチ（`idd-issue` / `idd-implement`）を用意しています。これを使うことで、Google Antigravity 以外の AI コーディングエージェントでも対象リポジトリの `.agents/skills` 配下に配置して各スキルを利用できます。
+`skills/idd-issue`、`skills/idd-clarify`、および `skills/idd-implement` をそれぞれ `git subtree split` で切り出した専用ブランチ（`idd-issue` / `idd-clarify` / `idd-implement`）を用意しています。これを使うことで、Google Antigravity 以外の AI コーディングエージェントでも対象リポジトリの `.agents/skills` 配下に配置して各スキルを利用できます。
 
 利用したいリポジトリのルートディレクトリ（作業ツリーがクリーンな状態）で、導入したいスキルのコマンドを実行してください。
 
@@ -109,6 +123,13 @@ git subtree add \
   --prefix=.agents/skills/idd-issue \
   https://github.com/sawarame/idd-skills.git \
   idd-issue \
+  --squash
+
+# idd-clarify（既存 Issue の不足仕様の洗い出し・対話確認・コメント追記）
+git subtree add \
+  --prefix=.agents/skills/idd-clarify \
+  https://github.com/sawarame/idd-skills.git \
+  idd-clarify \
   --squash
 
 # idd-implement（Issue 実装・PR レビュー対応の自律実行）
@@ -122,8 +143,8 @@ git subtree add \
 SSH 経由で取得する場合は、リポジトリ URL を `git@github.com:sawarame/idd-skills.git` に置き換えて実行してください。
 
 > [!NOTE]
-> - **AI エージェントに応じた `--prefix` の調整**: 多くの AI エージェントはプロジェクトローカルのスキルを `.agents/skills/` から読み込みますが、利用するツールによっては `.agent/skills/` や `.claude/skills/` などを参照する場合があります。使用するツールに合わせて `--prefix`（例: `--prefix=.agent/skills/idd-issue`、`--prefix=.agent/skills/idd-implement`）を読み替えてください。
-> - **スクリプトのパス（`idd-implement`）**: `idd-implement` の同梱スクリプトは配置したスキルディレクトリ配下の `scripts/`（例: `.agents/skills/idd-implement/scripts/`）に含まれます。[動作確認](#動作確認) のコマンドを手動実行する際は、`~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` を配置先のパスに読み替えてください。（`idd-issue` はローカルの `gh` CLI を直接利用するため同梱スクリプトはありません。）
+> - **AI エージェントに応じた `--prefix` の調整**: 多くの AI エージェントはプロジェクトローカルのスキルを `.agents/skills/` から読み込みますが、利用するツールによっては `.agent/skills/` や `.claude/skills/` などを参照する場合があります。使用するツールに合わせて `--prefix`（例: `--prefix=.agent/skills/idd-issue`、`--prefix=.agent/skills/idd-clarify`、`--prefix=.agent/skills/idd-implement`）を読み替えてください。
+> - **スクリプトのパス（`idd-implement`）**: `idd-implement` の同梱スクリプトは配置したスキルディレクトリ配下の `scripts/`（例: `.agents/skills/idd-implement/scripts/`）に含まれます。[動作確認](#動作確認) のコマンドを手動実行する際は、`~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` を配置先のパスに読み替えてください。（`idd-issue` および `idd-clarify` はローカルの `gh` CLI を直接利用するため同梱スクリプトはありません。）
 > - **GitHub App 設定の共有**: `~/.config/github-app/.env` はホームディレクトリ配下に配置するため、どのリポジトリへ導入した場合も `idd-implement` で同様に Bot 認証が利用できます（未設定時はローカルの `gh` / `git` 認証へフォールバックします）。
 
 導入後、各スキルを最新版へ更新する場合は以下を実行します。
@@ -134,6 +155,13 @@ git subtree pull \
   --prefix=.agents/skills/idd-issue \
   https://github.com/sawarame/idd-skills.git \
   idd-issue \
+  --squash
+
+# idd-clarify の更新
+git subtree pull \
+  --prefix=.agents/skills/idd-clarify \
+  https://github.com/sawarame/idd-skills.git \
+  idd-clarify \
   --squash
 
 # idd-implement の更新

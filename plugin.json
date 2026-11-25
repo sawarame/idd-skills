@@ -2,7 +2,7 @@
   "name": "idd-skills",
   "displayName": "@sawarame's IDD Skills",
   "version": "1.0.0",
-  "description": "Issue-driven development (IDD) skills to interactively brainstorm and create GitHub Issues as your local gh user (idd-issue), and autonomously inspect Issues or PR review feedback, implement and verify changes in isolated git worktrees, and create or update pull requests (idd-implement).",
+  "description": "Issue-driven development (IDD) skills to interactively brainstorm and create GitHub Issues as your local gh user (idd-issue), interactively inspect existing Issues to clarify missing specifications and post finalized specs as comments (idd-clarify), and autonomously inspect Issues or PR review feedback, implement and verify changes in isolated git worktrees, and create or update pull requests (idd-implement).",
   "author": {
     "name": "sawarame",
     "url": "https://github.com/sawarame"
@@ -10,6 +10,7 @@
   "repository": "https://github.com/sawarame/idd-skills",
   "suggestedPrompts": [
     "Brainstorm requirements and create a GitHub Issue using idd-issue",
+    "Clarify missing specifications on GitHub Issue #123 and post finalized specs using idd-clarify",
     "Implement GitHub Issue #123 using idd-implement",
     "Check GitHub Issue #123 for ambiguities and post clarification questions if needed",
     "Review requirements for Issue #123, implement in a git worktree, and create a PR",

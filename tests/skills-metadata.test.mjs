@@ -29,18 +29,23 @@ function parseSkillFrontmatter(markdown) {
   return result;
 }
 
-test('plugin.json: 有効な JSON であり idd-issue と idd-implement の案内を含むこと', () => {
+test('plugin.json: 有効な JSON であり idd-issue・idd-clarify・idd-implement の案内を含むこと', () => {
   const pluginPath = path.join(REPO_ROOT, 'plugin.json');
   const pluginJson = JSON.parse(fs.readFileSync(pluginPath, 'utf8'));
 
   assert.equal(pluginJson.name, 'idd-skills');
   assert.equal(pluginJson.enabled, true);
   assert.match(pluginJson.description, /idd-issue/);
+  assert.match(pluginJson.description, /idd-clarify/);
   assert.match(pluginJson.description, /idd-implement/);
   assert.ok(Array.isArray(pluginJson.suggestedPrompts));
   assert.ok(
     pluginJson.suggestedPrompts.some(prompt => prompt.includes('idd-issue')),
     'suggestedPrompts に idd-issue のプロンプト例が含まれること'
+  );
+  assert.ok(
+    pluginJson.suggestedPrompts.some(prompt => prompt.includes('idd-clarify')),
+    'suggestedPrompts に idd-clarify のプロンプト例が含まれること'
   );
   assert.ok(
     pluginJson.suggestedPrompts.some(prompt => prompt.includes('idd-implement')),
@@ -72,6 +77,31 @@ test('skills/idd-issue/SKILL.md: フロントマターと Issue #3 の必須要�
   assert.match(content, /idd-implement/);
 });
 
+test('skills/idd-clarify/SKILL.md: フロントマターと対話的な仕様明確化・コメント投稿の必須要件を満たしていること', () => {
+  const skillPath = path.join(REPO_ROOT, 'skills', 'idd-clarify', 'SKILL.md');
+  assert.ok(fs.existsSync(skillPath), 'skills/idd-clarify/SKILL.md が存在すること');
+
+  const content = fs.readFileSync(skillPath, 'utf8');
+  const frontmatter = parseSkillFrontmatter(content);
+
+  assert.equal(frontmatter.name, 'idd-clarify');
+  assert.ok(frontmatter.description && frontmatter.description.length > 20);
+
+  // ローカル gh ユーザーで Issue を読み込み・コメント投稿し、Bot ラッパーや AI 投稿マーカーを使わない方針が明記されていること
+  assert.match(content, /gh issue view/);
+  assert.match(content, /gh issue comment/);
+  assert.match(content, /gh auth status/);
+  assert.match(content, /Never[\s\S]*gh-as-bot\.mjs|never[\s\S]*gh-as-bot\.mjs/i);
+  assert.match(content, /\(🤖 Posted by AI\)/);
+  assert.match(content, /（🤖AIによる投稿）/);
+
+  // 仕様ギャップ分析・投稿前プレビュー・question ラベル配慮・idd-implement 連携が定義されていること
+  assert.match(content, /Out of Scope/i);
+  assert.match(content, /Acceptance Criteria/i);
+  assert.match(content, /question/);
+  assert.match(content, /idd-implement/);
+});
+
 test('skills/idd-implement/SKILL.md: 既存スキルのフロントマターと言語別 AI 投稿マーカーの記載が維持されていること', () => {
   const skillPath = path.join(REPO_ROOT, 'skills', 'idd-implement', 'SKILL.md');
   const content = fs.readFileSync(skillPath, 'utf8');
@@ -83,20 +113,26 @@ test('skills/idd-implement/SKILL.md: 既存スキルのフロントマターと�
   assert.match(content, /（🤖AIによる投稿）/);
 });
 
-test('README.md / README.ja.md: idd-issue と idd-implement の両スキルおよび各言語の AI 投稿マーカーが記載されていること', () => {
+test('README.md / README.ja.md: idd-issue・idd-clarify・idd-implement の全スキルおよび各言語の AI 投稿マーカーが記載されていること', () => {
   const readmeEn = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
   const readmeJa = fs.readFileSync(path.join(REPO_ROOT, 'README.ja.md'), 'utf8');
 
   assert.match(readmeEn, /## `idd-issue` Skill Documentation/);
+  assert.match(readmeEn, /## `idd-clarify` Skill Documentation/);
   assert.match(readmeEn, /gh issue create/);
+  assert.match(readmeEn, /gh issue comment/);
   assert.match(readmeEn, /\(🤖 Posted by AI\)/);
   assert.match(readmeEn, /\.\/skills\/idd-issue\/README\.md/);
+  assert.match(readmeEn, /\.\/skills\/idd-clarify\/README\.md/);
   assert.match(readmeEn, /\.\/skills\/idd-implement\/README\.md/);
 
   assert.match(readmeJa, /## `idd-issue` スキル概要/);
+  assert.match(readmeJa, /## `idd-clarify` スキル概要/);
   assert.match(readmeJa, /gh issue create/);
+  assert.match(readmeJa, /gh issue comment/);
   assert.match(readmeJa, /（🤖AIによる投稿）/);
   assert.match(readmeJa, /\.\/skills\/idd-issue\/README\.ja\.md/);
+  assert.match(readmeJa, /\.\/skills\/idd-clarify\/README\.ja\.md/);
   assert.match(readmeJa, /\.\/skills\/idd-implement\/README\.ja\.md/);
 });
 
@@ -107,6 +143,12 @@ test('各スキル配下の README.md / README.ja.md: 言語切替リンク・�
       command: '/idd-issue',
       enPath: path.join(REPO_ROOT, 'skills', 'idd-issue', 'README.md'),
       jaPath: path.join(REPO_ROOT, 'skills', 'idd-issue', 'README.ja.md')
+    },
+    {
+      skillName: 'idd-clarify',
+      command: '/idd-clarify',
+      enPath: path.join(REPO_ROOT, 'skills', 'idd-clarify', 'README.md'),
+      jaPath: path.join(REPO_ROOT, 'skills', 'idd-clarify', 'README.ja.md')
     },
     {
       skillName: 'idd-implement',

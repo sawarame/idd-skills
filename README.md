@@ -4,8 +4,9 @@
 
 An issue-driven development (IDD) plugin compatible with **Google Antigravity**.
 
-It provides two complementary skills:
+It provides three complementary skills:
 - **`idd-issue`**: Interactively brainstorms ideas with AI against your repository context and posts a structured GitHub Issue **as your locally authenticated `gh` user**.
+- **`idd-clarify`**: Inspects an existing GitHub Issue (including comments and codebase context) by Issue number, identifies missing or ambiguous specifications, clarifies them interactively with you, and posts the finalized specifications as an Issue comment **as your locally authenticated `gh` user**.
 - **`idd-implement`**: Starts from an existing GitHub Issue or Pull Request number and autonomously inspects requirements/reviews, implements and verifies changes in an isolated `git worktree`, and opens or updates Pull Requests.
 
 ## `idd-issue` Skill Documentation
@@ -18,6 +19,19 @@ An interactive skill ([Usage & Prompt Examples](./skills/idd-issue/README.md) | 
 - **Mandatory Preview & Confirmation**: Presents the complete draft (target repository, local `gh` account, title, optional labels/assignees, and Markdown body) and waits for your explicit approval before posting.
 - **Posted as Your Local `gh` User**: Creates the Issue directly via `gh issue create` under your locally logged-in `gh` CLI account (never via `gh-as-bot.mjs` or the GitHub App Bot, and **without** appending an AI post marker such as `(🤖 Posted by AI)`). GitHub Projects (Projects v2) registration and status transitions are out of scope for `idd-issue`.
 - **Smooth Handoff to `idd-implement`**: After creating the Issue, reports the Issue number and URL and guides you to run `/idd-implement <issue-number>` when ready to implement.
+
+---
+
+## `idd-clarify` Skill Documentation
+
+An interactive skill ([Usage & Prompt Examples](./skills/idd-clarify/README.md) | [`SKILL.md`](./skills/idd-clarify/SKILL.md)) for reading an existing GitHub Issue by number, uncovering specification gaps against the codebase, and finalizing specifications through dialogue before posting them as an Issue comment:
+
+- **End-to-End Flow**: Target Issue number/URL input → read-only Issue, existing comments, & repository inspection → specification gap analysis → interactive clarification dialogue → mandatory full preview & explicit user confirmation → posting the finalized specifications via `gh issue comment` (and optionally removing the `question` label if attached and approved) → suggesting `/idd-implement <issue-number>`.
+- **Read-Only Issue & Codebase Exploration**: Fetches the Issue and all existing comments (`gh issue view <issue-number> --comments`), including any unanswered questions from reviewers or prior `/idd-implement` (Goal A) runs, and checks relevant source files and project conventions without modifying any files or branches.
+- **Interactive Specification Clarification**: Summarizes what is already clear, lists missing or ambiguous points (scope/non-goals, functional behavior, edge cases/error handling, technical decisions, acceptance criteria), and resolves them with codebase-grounded options and recommendations.
+- **Mandatory Preview & Confirmation**: Presents the complete draft (target repository, Issue, local `gh` account, optional `question` label removal, and full Markdown comment body) and waits for your explicit approval before posting.
+- **Posted as Your Local `gh` User (Comment-Only)**: Records finalized specifications directly via `gh issue comment` under your locally logged-in `gh` CLI account without overwriting the original Issue description (never via `gh-as-bot.mjs` or the GitHub App Bot, and **without** appending an AI post marker such as `(🤖 Posted by AI)`). GitHub Projects (Projects v2) registration and status transitions are out of scope for `idd-clarify`.
+- **Smooth Handoff to `idd-implement`**: After posting the comment, reports the comment/Issue URL and guides you to run `/idd-implement <issue-number>` when ready to implement.
 
 ---
 
@@ -35,7 +49,7 @@ Using the bundled wrapper scripts [`scripts/gh-as-bot.mjs`](./skills/idd-impleme
 ## Behavior (Authentication Switching Rules)
 
 > [!NOTE]
-> The Bot/local authentication switching below applies to **`idd-implement`**. **`idd-issue`** always invokes `gh issue create` directly as your locally authenticated `gh` CLI user (and never appends an AI post marker such as `(🤖 Posted by AI)`).
+> The Bot/local authentication switching below applies to **`idd-implement`**. **`idd-issue`** (`gh issue create`) and **`idd-clarify`** (`gh issue comment` / optional `gh issue edit`) always invoke the local `gh` CLI directly as your locally authenticated user (and never append an AI post marker such as `(🤖 Posted by AI)`).
 
 | Condition | Authentication Identity Used | Comment Body & Git Commit/Push Behavior |
 | :--- | :--- | :--- |
@@ -99,7 +113,7 @@ git clone git@github.com:sawarame/idd-skills.git
 
 ### Other AI Agents / Project-Local Setup (`git subtree`)
 
-Dedicated `idd-issue` and `idd-implement` branches (split from `skills/idd-issue` and `skills/idd-implement` via `git subtree split`) are available so that AI coding agents other than Google Antigravity can also use either or both skills directly from a target repository's `.agents/skills` directory.
+Dedicated `idd-issue`, `idd-clarify`, and `idd-implement` branches (split from `skills/idd-issue`, `skills/idd-clarify`, and `skills/idd-implement` via `git subtree split`) are available so that AI coding agents other than Google Antigravity can also use any combination of skills directly from a target repository's `.agents/skills` directory.
 
 Run the following command(s) at the root of your target repository (requires a clean working tree):
 
@@ -109,6 +123,13 @@ git subtree add \
   --prefix=.agents/skills/idd-issue \
   https://github.com/sawarame/idd-skills.git \
   idd-issue \
+  --squash
+
+# idd-clarify: Interactive specification gap analysis & clarification comment posting
+git subtree add \
+  --prefix=.agents/skills/idd-clarify \
+  https://github.com/sawarame/idd-skills.git \
+  idd-clarify \
   --squash
 
 # idd-implement: Autonomous Issue implementation & PR review response
@@ -122,11 +143,11 @@ git subtree add \
 If you prefer SSH, replace the repository URL with `git@github.com:sawarame/idd-skills.git`.
 
 > [!NOTE]
-> - **Adjusting `--prefix` for your AI agent**: Many agents read project-local skills from `.agents/skills/`, while some tools use `.agent/skills/` or `.claude/skills/`. Adjust `--prefix` (for example, `--prefix=.agent/skills/idd-issue` or `--prefix=.agent/skills/idd-implement`) to match your AI agent's skill directory.
-> - **Script paths (`idd-implement`)**: `idd-implement`'s bundled helper scripts are located under the installed skill's `scripts/` directory (e.g., `.agents/skills/idd-implement/scripts/`). When running the commands in [Verification](#verification) manually, replace `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` with your installed path. (`idd-issue` uses your local `gh` CLI directly and has no bundled scripts.)
+> - **Adjusting `--prefix` for your AI agent**: Many agents read project-local skills from `.agents/skills/`, while some tools use `.agent/skills/` or `.claude/skills/`. Adjust `--prefix` (for example, `--prefix=.agent/skills/idd-issue`, `--prefix=.agent/skills/idd-clarify`, or `--prefix=.agent/skills/idd-implement`) to match your AI agent's skill directory.
+> - **Script paths (`idd-implement`)**: `idd-implement`'s bundled helper scripts are located under the installed skill's `scripts/` directory (e.g., `.agents/skills/idd-implement/scripts/`). When running the commands in [Verification](#verification) manually, replace `~/.gemini/config/plugins/idd-skills/skills/idd-implement/scripts/...` with your installed path. (`idd-issue` and `idd-clarify` use your local `gh` CLI directly and have no bundled scripts.)
 > - **GitHub App configuration**: `~/.config/github-app/.env` is stored in your home directory, so `idd-implement` Bot authentication works the same way across repositories. (Without it, `idd-implement` falls back to your local `gh` / `git` credentials.)
 
-To pull future updates for either skill into your repository:
+To pull future updates for any skill into your repository:
 
 ```bash
 # Update idd-issue
@@ -134,6 +155,13 @@ git subtree pull \
   --prefix=.agents/skills/idd-issue \
   https://github.com/sawarame/idd-skills.git \
   idd-issue \
+  --squash
+
+# Update idd-clarify
+git subtree pull \
+  --prefix=.agents/skills/idd-clarify \
+  https://github.com/sawarame/idd-skills.git \
+  idd-clarify \
   --squash
 
 # Update idd-implement
